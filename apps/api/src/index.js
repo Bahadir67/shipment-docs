@@ -12,10 +12,19 @@ const {
   createShareLink,
   getItem
 } = require("./graph");
+const multer = require("multer");
+const mime = require("mime-types");
+const {
+  getStorageConfig,
+  createLocalProductFolders,
+  saveBufferToFile,
+  getFileStream
+} = require("./storage");
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
+const upload = multer({ storage: multer.memoryStorage() });
 
 const sessions = new Map();
 
@@ -145,6 +154,16 @@ app.post("/products", requireAuth, async (req, res) => {
   try {
     const existing = await prisma.product.findUnique({ where: { serial } });
     if (existing) return res.status(409).json({ error: "serial_exists" });
+    let storagePath = null;
+    const storage = getStorageConfig();
+    if (storage.mode === "local") {
+      storagePath = createLocalProductFolders({
+        year: parsedYear,
+        customer,
+        project,
+        serial
+      });
+    }
     const product = await prisma.product.create({
       data: {
         serial,
@@ -152,7 +171,8 @@ app.post("/products", requireAuth, async (req, res) => {
         project,
         productType: productType || null,
         year: parsedYear,
-        status: "open"
+        status: "open",
+        onedriveFolder: storagePath
       }
     });
     return res.status(201).json(product);
@@ -183,10 +203,56 @@ app.get("/products", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/products/:id/files", requireAuth, upload.single("file"), async (req, res) => {
+  const { id } = req.params;
+  const { type, category } = req.body || {};
+  if (!req.file || !type) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  try {
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) return res.status(404).json({ error: "product_not_found" });
+    const storage = getStorageConfig();
+    if (storage.mode !== "local") {
+      return res.status(501).json({ error: "storage_not_configured" });
+    }
+    const basePath = product.onedriveFolder || createLocalProductFolders({
+      year: product.year,
+      customer: product.customer,
+      project: product.project,
+      serial: product.serial
+    });
+    const saved = saveBufferToFile({
+      basePath,
+      type,
+      category,
+      originalName: req.file.originalname,
+      buffer: req.file.buffer
+    });
+    const fileRecord = await prisma.file.create({
+      data: {
+        productId: product.id,
+        type,
+        category: category || null,
+        fileId: saved.fileName,
+        fileUrl: saved.fullPath
+      }
+    });
+    return res.status(201).json(fileRecord);
+  } catch (error) {
+    console.error("File upload failed", error.message);
+    return res.status(500).json({ error: "file_upload_failed" });
+  }
+});
+
 app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
   const { id: productId, fileId } = req.params;
   let entry;
   try {
+    const file = await prisma.file.findUnique({ where: { id: fileId } });
+    if (!file || file.productId !== productId) {
+      return res.status(404).json({ error: "file_not_found" });
+    }
     entry = await prisma.viewLog.create({
       data: {
         userId: req.user.id,
@@ -195,6 +261,11 @@ app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
         action: "view"
       }
     });
+    if (file.fileUrl) {
+      const contentType = mime.lookup(file.fileUrl) || "application/octet-stream";
+      res.setHeader("Content-Type", contentType);
+      return getFileStream(file.fileUrl).pipe(res);
+    }
   } catch (error) {
     console.error("View log failed", error.message);
     return res.status(500).json({ error: "view_log_failed" });
@@ -210,7 +281,26 @@ app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
 });
 
 app.get("/products/:id/files/:fileId/download", requireAuth, requireAdmin, (req, res) => {
-  res.status(501).json({ error: "not_implemented" });
+  prisma.file
+    .findUnique({ where: { id: req.params.fileId } })
+    .then((file) => {
+      if (!file || file.productId !== req.params.id) {
+        return res.status(404).json({ error: "file_not_found" });
+      }
+      if (!file.fileUrl) {
+        return res.status(404).json({ error: "file_missing" });
+      }
+      res.setHeader(
+        "Content-Type",
+        mime.lookup(file.fileUrl) || "application/octet-stream"
+      );
+      res.setHeader("Content-Disposition", `attachment; filename=\"${file.fileId}\"`);
+      return getFileStream(file.fileUrl).pipe(res);
+    })
+    .catch((error) => {
+      console.error("File download failed", error.message);
+      res.status(500).json({ error: "file_download_failed" });
+    });
 });
 
 app.get("/admin/view-logs", requireAuth, requireAdmin, async (req, res) => {
