@@ -129,6 +129,53 @@ app.post("/auth/users/:id/reset-password", requireAuth, requireAdmin, async (req
   }
 });
 
+app.post("/products", requireAuth, async (req, res) => {
+  const { serial, customer, project, productType, year } = req.body || {};
+  if (!serial || !customer || !project) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  const parsedYear = Number(year) || new Date().getFullYear();
+  try {
+    const existing = await prisma.product.findUnique({ where: { serial } });
+    if (existing) return res.status(409).json({ error: "serial_exists" });
+    const product = await prisma.product.create({
+      data: {
+        serial,
+        customer,
+        project,
+        productType: productType || null,
+        year: parsedYear,
+        status: "open"
+      }
+    });
+    return res.status(201).json(product);
+  } catch (error) {
+    console.error("Product create failed", error.message);
+    return res.status(500).json({ error: "product_create_failed" });
+  }
+});
+
+app.get("/products/:id", requireAuth, async (req, res) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!product) return res.status(404).json({ error: "product_not_found" });
+    return res.json(product);
+  } catch (error) {
+    console.error("Product fetch failed", error.message);
+    return res.status(500).json({ error: "product_fetch_failed" });
+  }
+});
+
+app.get("/products", requireAuth, async (req, res) => {
+  try {
+    const products = await prisma.product.findMany({ orderBy: { createdAt: "desc" } });
+    return res.json({ data: products });
+  } catch (error) {
+    console.error("Product list failed", error.message);
+    return res.status(500).json({ error: "product_list_failed" });
+  }
+});
+
 app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
   const { id: productId, fileId } = req.params;
   let entry;

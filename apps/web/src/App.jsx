@@ -12,6 +12,15 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState({ type: "", message: "" });
   const [user, setUser] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [productForm, setProductForm] = useState({
+    serial: "",
+    customer: "",
+    project: "",
+    productType: "",
+    year: new Date().getFullYear().toString()
+  });
+  const [productStatus, setProductStatus] = useState({ type: "", message: "" });
   const apiBase = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const tokenKey = "shipment_docs_token";
 
@@ -32,8 +41,74 @@ export default function App() {
       }
       const payload = await response.json();
       setUser(payload);
+      fetchProducts(token);
     } catch (error) {
       setStatus({ type: "error", message: "Unable to restore session." });
+    }
+  };
+
+  const fetchProducts = async (token) => {
+    try {
+      const response = await fetch(`${apiBase}/products`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      setProducts(payload.data || []);
+    } catch (error) {
+      setProducts([]);
+    }
+  };
+
+  const handleProductChange = (field) => (event) => {
+    setProductForm((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const handleCreateProduct = async (event) => {
+    event.preventDefault();
+    setProductStatus({ type: "", message: "" });
+    const token = localStorage.getItem(tokenKey);
+    if (!token) {
+      setProductStatus({ type: "error", message: "Please sign in first." });
+      return;
+    }
+    const { serial, customer, project } = productForm;
+    if (!serial || !customer || !project) {
+      setProductStatus({ type: "error", message: "Serial, customer, and project are required." });
+      return;
+    }
+    try {
+      const response = await fetch(`${apiBase}/products`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          serial: productForm.serial,
+          customer: productForm.customer,
+          project: productForm.project,
+          productType: productForm.productType,
+          year: productForm.year
+        })
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        setProductStatus({ type: "error", message: payload.error || "Create failed." });
+        return;
+      }
+      const payload = await response.json();
+      setProductStatus({ type: "success", message: "Product created." });
+      setProductForm((prev) => ({
+        ...prev,
+        serial: "",
+        customer: "",
+        project: "",
+        productType: ""
+      }));
+      setProducts((prev) => [payload, ...prev]);
+    } catch (error) {
+      setProductStatus({ type: "error", message: "Network error. Try again." });
     }
   };
 
@@ -59,6 +134,7 @@ export default function App() {
       const payload = await response.json();
       localStorage.setItem(tokenKey, payload.token);
       setUser(payload.user);
+      fetchProducts(payload.token);
       setStatus({ type: "success", message: "Signed in successfully." });
       setPassword("");
     } catch (error) {
@@ -132,10 +208,81 @@ export default function App() {
                 <div className="user-pill">
                   Signed in as <strong>{user.username}</strong>
                 </div>
-                <button type="button" onClick={handleLogout}>
-                  Sign out
-                </button>
-                <p className="card-sub">Ready to open a product record.</p>
+                <div className="session-actions">
+                  <button type="button" onClick={handleLogout}>
+                    Sign out
+                  </button>
+                  <span className="card-sub">Ready to open a product record.</span>
+                </div>
+                <form className="product-form" onSubmit={handleCreateProduct}>
+                  <label>
+                    Serial number
+                    <input
+                      type="text"
+                      placeholder="SN-1042"
+                      value={productForm.serial}
+                      onChange={handleProductChange("serial")}
+                    />
+                  </label>
+                  <label>
+                    Customer
+                    <input
+                      type="text"
+                      placeholder="ACME"
+                      value={productForm.customer}
+                      onChange={handleProductChange("customer")}
+                    />
+                  </label>
+                  <label>
+                    Project
+                    <input
+                      type="text"
+                      placeholder="PRJ-17"
+                      value={productForm.project}
+                      onChange={handleProductChange("project")}
+                    />
+                  </label>
+                  <label>
+                    Product type
+                    <input
+                      type="text"
+                      placeholder="HGU-450"
+                      value={productForm.productType}
+                      onChange={handleProductChange("productType")}
+                    />
+                  </label>
+                  <label>
+                    Year
+                    <input
+                      type="number"
+                      placeholder="2025"
+                      value={productForm.year}
+                      onChange={handleProductChange("year")}
+                    />
+                  </label>
+                  <button type="submit">Create product</button>
+                </form>
+                {productStatus.message ? (
+                  <div className={`status-chip ${productStatus.type}`}>
+                    {productStatus.message}
+                  </div>
+                ) : null}
+                <div className="product-list">
+                  <h3>Recent products</h3>
+                  {products.length ? (
+                    <ul>
+                      {products.slice(0, 5).map((item) => (
+                        <li key={item.id}>
+                          <span>{item.serial}</span>
+                          <span>{item.customer}</span>
+                          <span>{item.project}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="card-sub">No products yet.</p>
+                  )}
+                </div>
               </>
             ) : (
               <>
