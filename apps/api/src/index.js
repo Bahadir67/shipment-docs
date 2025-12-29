@@ -1,31 +1,48 @@
 const express = require("express");
 const cors = require("cors");
+const crypto = require("crypto");
 require("dotenv").config();
 
-const {
-  createUser,
-  findUserByUsername,
-  verifyPassword,
-  createSession,
-  getUserByToken,
-  resetPassword,
-  addViewLog,
-  listViewLogs
-} = require("./store");
+const prisma = require("./db/prisma");
 const { sendAdminNotice } = require("./mailer");
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
-function requireAuth(req, res, next) {
+const sessions = new Map();
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
+  const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
+  return { salt, hash };
+}
+
+function verifyPassword(user, password) {
+  const { hash } = hashPassword(password, user.passwordSalt);
+  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(user.passwordHash, "hex"));
+}
+
+function createSession(userId) {
+  const token = crypto.randomBytes(24).toString("hex");
+  sessions.set(token, userId);
+  return token;
+}
+
+async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: "missing_token" });
-  const user = getUserByToken(token);
-  if (!user) return res.status(401).json({ error: "invalid_token" });
-  req.user = user;
-  return next();
+  const userId = sessions.get(token);
+  if (!userId) return res.status(401).json({ error: "invalid_token" });
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return res.status(401).json({ error: "invalid_user" });
+    req.user = user;
+    return next();
+  } catch (error) {
+    console.error("Auth lookup failed", error.message);
+    return res.status(500).json({ error: "auth_error" });
+  }
 }
 
 function requireAdmin(req, res, next) {
@@ -43,18 +60,23 @@ app.get("/health", (req, res) => {
   });
 });
 
-app.post("/auth/login", (req, res) => {
+app.post("/auth/login", async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: "missing_credentials" });
-  const user = findUserByUsername(username);
-  if (!user || !verifyPassword(user, password)) {
-    return res.status(401).json({ error: "invalid_credentials" });
+  try {
+    const user = await prisma.user.findUnique({ where: { username } });
+    if (!user || !verifyPassword(user, password)) {
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
+    const token = createSession(user.id);
+    return res.json({
+      token,
+      user: { id: user.id, username: user.username, role: user.role }
+    });
+  } catch (error) {
+    console.error("Login failed", error.message);
+    return res.status(500).json({ error: "login_failed" });
   }
-  const token = createSession(user);
-  return res.json({
-    token,
-    user: { id: user.id, username: user.username, role: user.role }
-  });
 });
 
 app.get("/auth/me", requireAuth, (req, res) => {
@@ -62,30 +84,67 @@ app.get("/auth/me", requireAuth, (req, res) => {
   res.json({ id, username, role });
 });
 
-app.post("/auth/users", requireAuth, requireAdmin, (req, res) => {
+app.post("/auth/users", requireAuth, requireAdmin, async (req, res) => {
   const { username, password, role, email } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: "missing_fields" });
-  if (findUserByUsername(username)) return res.status(409).json({ error: "user_exists" });
-  const user = createUser({ username, password, role, email });
-  res.status(201).json({ id: user.id, username: user.username, role: user.role });
+  try {
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (existing) return res.status(409).json({ error: "user_exists" });
+    const { salt, hash } = hashPassword(password);
+    const user = await prisma.user.create({
+      data: {
+        username,
+        email: email || null,
+        role: role || "user",
+        passwordHash: hash,
+        passwordSalt: salt
+      }
+    });
+    return res.status(201).json({ id: user.id, username: user.username, role: user.role });
+  } catch (error) {
+    console.error("User create failed", error.message);
+    return res.status(500).json({ error: "user_create_failed" });
+  }
 });
 
-app.post("/auth/users/:id/reset-password", requireAuth, requireAdmin, (req, res) => {
+app.post("/auth/users/:id/reset-password", requireAuth, requireAdmin, async (req, res) => {
   const { password } = req.body || {};
   if (!password) return res.status(400).json({ error: "missing_password" });
-  const user = resetPassword(req.params.id, password);
-  if (!user) return res.status(404).json({ error: "user_not_found" });
-  res.json({ id: user.id, username: user.username });
+  const { salt, hash } = hashPassword(password);
+  try {
+    const user = await prisma.user.update({
+      where: { id: req.params.id },
+      data: {
+        passwordHash: hash,
+        passwordSalt: salt
+      }
+    });
+    return res.json({ id: user.id, username: user.username });
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "user_not_found" });
+    }
+    console.error("Password reset failed", error.message);
+    return res.status(500).json({ error: "reset_failed" });
+  }
 });
 
 app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
   const { id: productId, fileId } = req.params;
-  const entry = addViewLog({
-    userId: req.user.id,
-    productId,
-    fileId,
-    action: "view"
-  });
+  let entry;
+  try {
+    entry = await prisma.viewLog.create({
+      data: {
+        userId: req.user.id,
+        productId,
+        fileId,
+        action: "view"
+      }
+    });
+  } catch (error) {
+    console.error("View log failed", error.message);
+    return res.status(500).json({ error: "view_log_failed" });
+  }
   const subject = `File viewed: ${fileId}`;
   const text = `User ${req.user.username} viewed file ${fileId} for product ${productId} at ${entry.createdAt}`;
   try {
@@ -100,24 +159,37 @@ app.get("/products/:id/files/:fileId/download", requireAuth, requireAdmin, (req,
   res.status(501).json({ error: "not_implemented" });
 });
 
-app.get("/admin/view-logs", requireAuth, requireAdmin, (req, res) => {
-  res.json({ data: listViewLogs() });
+app.get("/admin/view-logs", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const logs = await prisma.viewLog.findMany({ orderBy: { createdAt: "desc" } });
+    return res.json({ data: logs });
+  } catch (error) {
+    console.error("View log list failed", error.message);
+    return res.status(500).json({ error: "view_log_list_failed" });
+  }
 });
 
-function seedAdmin() {
+async function seedAdmin() {
   const username = process.env.ADMIN_USERNAME;
   const password = process.env.ADMIN_PASSWORD;
   if (!username || !password) return;
-  if (findUserByUsername(username)) return;
-  createUser({
-    username,
-    password,
-    role: "admin",
-    email: process.env.ADMIN_EMAIL || null
+  const existing = await prisma.user.findUnique({ where: { username } });
+  if (existing) return;
+  const { salt, hash } = hashPassword(password);
+  await prisma.user.create({
+    data: {
+      username,
+      email: process.env.ADMIN_EMAIL || null,
+      role: "admin",
+      passwordHash: hash,
+      passwordSalt: salt
+    }
   });
 }
 
-seedAdmin();
+seedAdmin().catch((error) => {
+  console.error("Admin seed failed", error.message);
+});
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {

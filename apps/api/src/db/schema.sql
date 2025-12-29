@@ -36,8 +36,8 @@ CREATE TABLE files (
 CREATE TABLE view_logs (
   id uuid PRIMARY KEY,
   user_id uuid REFERENCES users(id),
-  product_id uuid REFERENCES products(id),
-  file_id uuid REFERENCES files(id),
+  product_id text,
+  file_id text,
   action text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
