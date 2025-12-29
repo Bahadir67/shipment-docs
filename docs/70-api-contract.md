@@ -4,6 +4,18 @@ Backend provides two groups of endpoints: product API and Graph proxy API.
 
 ## Product API (apps/api)
 
+POST /auth/login
+- User login (username + password)
+
+GET /auth/me
+- Return the current user identity
+
+POST /auth/users
+- Admin-only user creation
+
+POST /auth/users/:id/reset-password
+- Admin-only password reset
+
 POST /products
 - Create a product record and create the OneDrive folder
 - Request body:
