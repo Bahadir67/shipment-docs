@@ -5,6 +5,13 @@ require("dotenv").config();
 
 const prisma = require("./db/prisma");
 const { sendAdminNotice } = require("./mailer");
+const {
+  getConfig,
+  createProductFolder,
+  uploadBase64,
+  createShareLink,
+  getItem
+} = require("./graph");
 
 const app = express();
 app.use(cors());
@@ -213,6 +220,68 @@ app.get("/admin/view-logs", requireAuth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("View log list failed", error.message);
     return res.status(500).json({ error: "view_log_list_failed" });
+  }
+});
+
+app.get("/graph/health", requireAuth, async (req, res) => {
+  try {
+    const config = getConfig();
+    if (!config.tenantId || !config.clientId || !config.clientSecret) {
+      return res.status(400).json({ error: "graph_config_missing" });
+    }
+    return res.json({ status: "ok", driveId: config.driveId || null, siteId: config.siteId || null });
+  } catch (error) {
+    return res.status(500).json({ error: "graph_health_failed" });
+  }
+});
+
+app.post("/graph/folders", requireAuth, async (req, res) => {
+  const { year, customer, project, serial } = req.body || {};
+  if (!year || !customer || !project || !serial) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  try {
+    const result = await createProductFolder({ year, customer, project, serial });
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error("Graph folder create failed", error.message);
+    return res.status(500).json({ error: "graph_folder_failed" });
+  }
+});
+
+app.post("/graph/uploads", requireAuth, async (req, res) => {
+  const { path, contentBase64 } = req.body || {};
+  if (!path || !contentBase64) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  try {
+    const item = await uploadBase64({ path, contentBase64 });
+    return res.status(201).json(item);
+  } catch (error) {
+    console.error("Graph upload failed", error.message);
+    return res.status(500).json({ error: "graph_upload_failed" });
+  }
+});
+
+app.post("/graph/share-link", requireAuth, async (req, res) => {
+  const { itemId, type, scope } = req.body || {};
+  if (!itemId) return res.status(400).json({ error: "missing_item_id" });
+  try {
+    const link = await createShareLink({ itemId, type, scope });
+    return res.status(201).json(link);
+  } catch (error) {
+    console.error("Graph share link failed", error.message);
+    return res.status(500).json({ error: "graph_share_failed" });
+  }
+});
+
+app.get("/graph/items/:itemId", requireAuth, async (req, res) => {
+  try {
+    const item = await getItem(req.params.itemId);
+    return res.json(item);
+  } catch (error) {
+    console.error("Graph item fetch failed", error.message);
+    return res.status(500).json({ error: "graph_item_failed" });
   }
 });
 
