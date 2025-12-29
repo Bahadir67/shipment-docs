@@ -33,9 +33,10 @@ POST /products/:id/checklist
   - completed
 
 POST /products/:id/files
-- Upload test report or label
+- Upload test report, label, or project file
 - Request body:
-  - type (test_report | label)
+  - type (test_report | label | project_file)
+  - category (optional: drawings | hydraulic | electrical | software)
   - file (multipart)
 
 POST /products/:id/close
@@ -44,6 +45,12 @@ POST /products/:id/close
 
 POST /products/:id/view
 - Generate print-ready HTML view (no PDF required)
+
+GET /products/:id/files/:fileId/view
+- View a file through the app (logs view event + admin email)
+
+GET /products/:id/files/:fileId/download
+- Admin-only download (required for software source archives)
 
 ## Graph Proxy API
 
