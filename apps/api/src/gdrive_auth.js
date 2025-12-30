@@ -1,4 +1,5 @@
 const fs = require("fs");
+require("dotenv").config();
 const readline = require("readline");
 const { getOAuthClient } = require("./gdrive");
 
