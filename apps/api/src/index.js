@@ -217,6 +217,46 @@ app.get("/products", requireAuth, async (req, res) => {
   }
 });
 
+app.put("/products/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { serial, customer, project, productType, year, status } = req.body || {};
+  const data = {};
+  if (serial) data.serial = serial;
+  if (customer) data.customer = customer;
+  if (project) data.project = project;
+  if (productType !== undefined) data.productType = productType || null;
+  if (year) data.year = Number(year);
+  if (status) data.status = status;
+  try {
+    const updated = await prisma.product.update({
+      where: { id: req.params.id },
+      data
+    });
+    return res.json(updated);
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "product_not_found" });
+    }
+    console.error("Product update failed", error.message);
+    return res.status(500).json({ error: "product_update_failed" });
+  }
+});
+
+app.delete("/products/:id", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const updated = await prisma.product.update({
+      where: { id: req.params.id },
+      data: { status: "deleted" }
+    });
+    return res.json(updated);
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "product_not_found" });
+    }
+    console.error("Product delete failed", error.message);
+    return res.status(500).json({ error: "product_delete_failed" });
+  }
+});
+
 app.post("/products/:id/files", requireAuth, upload.single("file"), async (req, res) => {
   const { id } = req.params;
   const { type, category } = req.body || {};
