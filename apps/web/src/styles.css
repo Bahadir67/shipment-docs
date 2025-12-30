@@ -259,6 +259,25 @@ body {
   background: rgba(15, 26, 28, 0.08);
 }
 
+.sync-pill {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 6px 10px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.sync-pill.online {
+  background: rgba(110, 245, 167, 0.3);
+  color: #1c4b2e;
+}
+
+.sync-pill.offline {
+  background: rgba(255, 107, 61, 0.2);
+  color: #6b2411;
+}
+
 .session-actions {
   display: flex;
   align-items: center;
@@ -268,6 +287,30 @@ body {
 .product-form {
   display: grid;
   gap: 12px;
+}
+
+.upload-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed rgba(15, 26, 28, 0.2);
+}
+
+.upload-form h3 {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(15, 26, 28, 0.5);
+}
+
+.upload-form select {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 15px;
+  background: #fff;
 }
 
 .product-form button {
