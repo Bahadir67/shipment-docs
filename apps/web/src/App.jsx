@@ -5,10 +5,10 @@ const serialRegex = /^SN-\d{5}$/;
 const projectSuffixRegex = /^\d{4}$/;
 
 const menuItems = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "projects", label: "Projects" },
-  { id: "new", label: "New project" },
-  { id: "uploads", label: "Uploads" }
+  { id: "dashboard", label: "Genel Bakis" },
+  { id: "projects", label: "Projeler" },
+  { id: "new", label: "Yeni Proje" },
+  { id: "uploads", label: "Yuklemeler" }
 ];
 
 export default function App() {
@@ -95,7 +95,7 @@ export default function App() {
       setUser(payload);
       fetchProducts(token);
     } catch (error) {
-      setStatus({ type: "error", message: "Unable to restore session." });
+      setStatus({ type: "error", message: "Oturum geri yuklenemedi." });
     }
   };
 
@@ -218,25 +218,25 @@ export default function App() {
     setProductStatus({ type: "", message: "" });
     const token = localStorage.getItem(tokenKey);
     if (!token) {
-      setProductStatus({ type: "error", message: "Please sign in first." });
+      setProductStatus({ type: "error", message: "Once giris yapin." });
       return;
     }
     if (!serialRegex.test(productForm.serial)) {
       setProductStatus({
         type: "error",
-        message: "Serial format must be SN-12345."
+        message: "Seri format SN-12345 olmali."
       });
       return;
     }
     if (!projectSuffixRegex.test(productForm.projectSuffix)) {
       setProductStatus({
         type: "error",
-        message: "Project suffix must be 4 digits."
+        message: "Proje soneki 4 haneli olmali."
       });
       return;
     }
     if (!productForm.customer) {
-      setProductStatus({ type: "error", message: "Customer is required." });
+      setProductStatus({ type: "error", message: "Musteri zorunludur." });
       return;
     }
     const payload = {
@@ -248,7 +248,7 @@ export default function App() {
     };
     if (!navigator.onLine) {
       enqueueProduct(payload);
-      setProductStatus({ type: "success", message: "Queued for sync." });
+      setProductStatus({ type: "success", message: "Senkron icin kuyruga alindi." });
       setProductForm((prev) => ({
         ...prev,
         serial: "",
@@ -269,11 +269,11 @@ export default function App() {
       });
       if (!response.ok) {
         const result = await response.json().catch(() => ({}));
-        setProductStatus({ type: "error", message: result.error || "Create failed." });
+        setProductStatus({ type: "error", message: result.error || "Olusturma basarisiz." });
         return;
       }
       const created = await response.json();
-      setProductStatus({ type: "success", message: "Project created." });
+      setProductStatus({ type: "success", message: "Proje olusturuldu." });
       setProductForm((prev) => ({
         ...prev,
         serial: "",
@@ -285,7 +285,7 @@ export default function App() {
       setCurrentProject(created);
       setActivePage("uploads");
     } catch (error) {
-      setProductStatus({ type: "error", message: "Network error. Try again." });
+      setProductStatus({ type: "error", message: "Ag hatasi. Tekrar deneyin." });
     }
   };
 
@@ -294,15 +294,15 @@ export default function App() {
     setUploadStatus({ type: "", message: "" });
     const token = localStorage.getItem(tokenKey);
     if (!token) {
-      setUploadStatus({ type: "error", message: "Please sign in first." });
+      setUploadStatus({ type: "error", message: "Once giris yapin." });
       return;
     }
     if (!currentProject || String(currentProject.id || "").startsWith("temp-")) {
-      setUploadStatus({ type: "error", message: "Project is not synced yet." });
+      setUploadStatus({ type: "error", message: "Proje henuz senkron degil." });
       return;
     }
     if (!uploadForm.files.length) {
-      setUploadStatus({ type: "error", message: "Select at least one file." });
+      setUploadStatus({ type: "error", message: "En az bir dosya secin." });
       return;
     }
     if (!navigator.onLine) {
@@ -316,7 +316,7 @@ export default function App() {
           mimeType: file.type
         });
       }
-      setUploadStatus({ type: "success", message: "Upload queued for sync." });
+      setUploadStatus({ type: "success", message: "Yukleme senkron icin kuyruga alindi." });
       setUploadForm((prev) => ({ ...prev, files: [] }));
       refreshPendingUploads();
       return;
@@ -339,14 +339,14 @@ export default function App() {
         );
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          setUploadStatus({ type: "error", message: payload.error || "Upload failed." });
+        setUploadStatus({ type: "error", message: payload.error || "Yukleme basarisiz." });
           return;
         }
       }
-      setUploadStatus({ type: "success", message: "Uploaded." });
+      setUploadStatus({ type: "success", message: "Yuklendi." });
       setUploadForm((prev) => ({ ...prev, files: [] }));
     } catch (error) {
-      setUploadStatus({ type: "error", message: "Network error. Try again." });
+      setUploadStatus({ type: "error", message: "Ag hatasi. Tekrar deneyin." });
     }
   };
 
@@ -355,14 +355,14 @@ export default function App() {
     const notes = loadNotes();
     notes[currentProject.id] = noteText;
     saveNotes(notes);
-    setNoteStatus({ type: "success", message: "Note saved." });
+    setNoteStatus({ type: "success", message: "Not kaydedildi." });
   };
 
   const handleLogin = async (event) => {
     event.preventDefault();
     setStatus({ type: "", message: "" });
     if (!username || !password) {
-      setStatus({ type: "error", message: "Username and password are required." });
+      setStatus({ type: "error", message: "Kullanici adi ve sifre zorunlu." });
       return;
     }
     try {
@@ -373,7 +373,7 @@ export default function App() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        const message = payload.error || "Login failed.";
+        const message = payload.error || "Giris basarisiz.";
         setStatus({ type: "error", message });
         return;
       }
@@ -381,10 +381,10 @@ export default function App() {
       localStorage.setItem(tokenKey, payload.token);
       setUser(payload.user);
       fetchProducts(payload.token);
-      setStatus({ type: "success", message: "Signed in successfully." });
+      setStatus({ type: "success", message: "Giris basarili." });
       setPassword("");
     } catch (error) {
-      setStatus({ type: "error", message: "Network error. Try again." });
+      setStatus({ type: "error", message: "Ag hatasi. Tekrar deneyin." });
     }
   };
 
@@ -492,7 +492,7 @@ export default function App() {
           <span className="brand-mark">SD</span>
           <div>
             <p className="brand-title">Shipment Docs</p>
-            <p className="brand-sub">MVP Workspace</p>
+            <p className="brand-sub">MVP Calisma Alani</p>
           </div>
         </div>
         <nav className="menu">
@@ -511,20 +511,20 @@ export default function App() {
           {user ? (
             <>
               <div className="sync-pill">
-                {isOnline ? "Online" : "Offline"} • {pendingUploads} queued
+                {isOnline ? "Cevrimici" : "Cevrimdisi"} • {pendingUploads} kuyrukta
               </div>
               <div className="user-pill">
                 {user.username} • {user.role}
               </div>
               <button type="button" className="ghost" onClick={syncAll} disabled={syncing}>
-                {syncing ? "Syncing..." : "Sync now"}
+                {syncing ? "Senkron..." : "Simdi senkronla"}
               </button>
               <button type="button" onClick={handleLogout}>
-                Sign out
+                Cikis
               </button>
             </>
           ) : (
-            <p className="card-sub">Sign in to begin.</p>
+            <p className="card-sub">Baslamak icin giris yapin.</p>
           )}
         </div>
       </aside>
@@ -533,18 +533,18 @@ export default function App() {
         <header className="topbar">
           <div>
             <h1>{menuItems.find((item) => item.id === activePage)?.label}</h1>
-            <p>Tablet and desktop ready.</p>
+            <p>Tablet ve masaustu uyumlu.</p>
           </div>
           <div className="status">
             <span className="pulse" aria-hidden="true" />
-            Sync ready
+            Senkron hazir
           </div>
         </header>
 
         {currentProject ? (
           <section className="project-banner">
             <div>
-              <p>Active project</p>
+              <p>Aktif proje</p>
               <h2>{currentProject.project}</h2>
             </div>
             <div>
@@ -557,11 +557,11 @@ export default function App() {
 
         {!user ? (
           <section className="panel">
-            <h2>Sign in</h2>
-            <p>Use your username and password to access the workspace.</p>
+            <h2>Giris</h2>
+            <p>Calisma alanina ulasmak icin giris yapin.</p>
             <form className="form" onSubmit={handleLogin}>
               <label>
-                Username
+                Kullanici adi
                 <input
                   type="text"
                   placeholder="qc_user"
@@ -570,15 +570,15 @@ export default function App() {
                 />
               </label>
               <label>
-                Password
+                Sifre
                 <input
                   type="password"
-                  placeholder="Enter password"
+                  placeholder="Sifre girin"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
               </label>
-              <button type="submit">Sign in</button>
+              <button type="submit">Giris</button>
             </form>
             {status.message ? (
               <div className={`status-chip ${status.type}`}>{status.message}</div>
@@ -589,27 +589,27 @@ export default function App() {
         {user && activePage === "dashboard" ? (
           <section className="grid">
             <div className="panel">
-              <h2>Quick stats</h2>
+              <h2>Hizli ozet</h2>
               <div className="stats">
                 <div>
                   <h3>{visibleProjects.length}</h3>
-                  <p>Active projects</p>
+                  <p>Aktif projeler</p>
                 </div>
                 <div>
                   <h3>{pendingUploads}</h3>
-                  <p>Queued uploads</p>
+                  <p>Kuyruktaki yuklemeler</p>
                 </div>
                 <div>
-                  <h3>{isOnline ? "Online" : "Offline"}</h3>
-                  <p>Connectivity</p>
+                  <h3>{isOnline ? "Cevrimici" : "Cevrimdisi"}</h3>
+                  <p>Baglanti</p>
                 </div>
               </div>
               <p className="hint">
-                Use “New project” to start, then go to “Uploads” to capture files.
+                "Yeni Proje" ile baslayin, sonra "Yuklemeler" ile dosya ekleyin.
               </p>
             </div>
             <div className="panel">
-              <h2>Recent projects</h2>
+              <h2>Son projeler</h2>
               <ul className="list">
                 {visibleProjects.slice(0, 5).map((item) => (
                   <li key={item.id}>
@@ -620,7 +620,7 @@ export default function App() {
                       setCurrentProject(item);
                       setActivePage("uploads");
                     }}>
-                      Open
+                      Ac
                     </button>
                   </li>
                 ))}
@@ -631,8 +631,8 @@ export default function App() {
 
         {user && activePage === "projects" ? (
           <section className="panel">
-            <h2>All projects</h2>
-            <p className="hint">Only admins can edit or delete records.</p>
+            <h2>Tum projeler</h2>
+            <p className="hint">Yalnizca admin duzenleyebilir veya silebilir.</p>
             <div className="table">
               {visibleProjects.map((item) => (
                 <div key={item.id} className="row">
@@ -649,15 +649,15 @@ export default function App() {
                       setCurrentProject(item);
                       setActivePage("uploads");
                     }}>
-                      View
+                      Goruntule
                     </button>
                     {isAdmin ? (
                       <>
                         <button type="button" className="ghost" onClick={() => startEdit(item)}>
-                          Edit
+                          Duzenle
                         </button>
                         <button type="button" className="danger" onClick={() => deleteProject(item.id)}>
-                          Delete
+                          Sil
                         </button>
                       </>
                     ) : null}
@@ -665,7 +665,7 @@ export default function App() {
                   {editingProjectId === item.id ? (
                     <div className="edit-panel">
                       <label>
-                        Serial
+                        Seri
                         <input
                           value={editForm.serial}
                           onChange={(event) => setEditForm((prev) => ({
@@ -675,7 +675,7 @@ export default function App() {
                         />
                       </label>
                       <label>
-                        Customer
+                        Musteri
                         <input
                           value={editForm.customer}
                           onChange={(event) => setEditForm((prev) => ({
@@ -685,7 +685,7 @@ export default function App() {
                         />
                       </label>
                       <label>
-                        Project
+                        Proje
                         <input
                           value={editForm.project}
                           onChange={(event) => setEditForm((prev) => ({
@@ -695,7 +695,7 @@ export default function App() {
                         />
                       </label>
                       <label>
-                        Product type
+                        Urun tipi
                         <input
                           value={editForm.productType}
                           onChange={(event) => setEditForm((prev) => ({
@@ -705,7 +705,7 @@ export default function App() {
                         />
                       </label>
                       <label>
-                        Year
+                        Yil
                         <input
                           value={editForm.year}
                           onChange={(event) => setEditForm((prev) => ({
@@ -716,10 +716,10 @@ export default function App() {
                       </label>
                       <div className="row-actions">
                         <button type="button" onClick={saveEdit}>
-                          Save
+                          Kaydet
                         </button>
                         <button type="button" className="ghost" onClick={cancelEdit}>
-                          Cancel
+                          Iptal
                         </button>
                       </div>
                     </div>
@@ -732,14 +732,14 @@ export default function App() {
 
         {user && activePage === "new" ? (
           <section className="panel">
-            <h2>New project</h2>
+            <h2>Yeni proje</h2>
             <p className="hint">
-              Serial format: <strong>SN-12345</strong>. Project format:
+              Seri format: <strong>SN-12345</strong>. Proje format:
               <strong> PRJ-YYYY-####</strong>.
             </p>
             <form className="form grid-form" onSubmit={handleCreateProject}>
               <label>
-                Serial number
+                Seri numarasi
                 <input
                   type="text"
                   placeholder="SN-12345"
@@ -748,7 +748,7 @@ export default function App() {
                 />
               </label>
               <label>
-                Customer
+                Musteri
                 <input
                   type="text"
                   placeholder="ACME"
@@ -757,7 +757,7 @@ export default function App() {
                 />
               </label>
               <label>
-                Project suffix
+                Proje soneki
                 <input
                   type="text"
                   placeholder="0001"
@@ -766,11 +766,11 @@ export default function App() {
                 />
               </label>
               <label>
-                Project code
+                Proje kodu
                 <input type="text" value={projectCode} readOnly />
               </label>
               <label>
-                Product type
+                Urun tipi
                 <input
                   type="text"
                   placeholder="HGU-450"
@@ -779,10 +779,10 @@ export default function App() {
                 />
               </label>
               <label>
-                Year
+                Yil
                 <input type="text" value={productForm.year} readOnly />
               </label>
-              <button type="submit">Create project</button>
+              <button type="submit">Proje olustur</button>
             </form>
             {productStatus.message ? (
               <div className={`status-chip ${productStatus.type}`}>{productStatus.message}</div>
@@ -792,33 +792,33 @@ export default function App() {
 
         {user && activePage === "uploads" ? (
           <section className="panel">
-            <h2>Uploads</h2>
+            <h2>Yuklemeler</h2>
             {!currentProject ? (
-              <p className="hint">Select a project from the Projects menu first.</p>
+              <p className="hint">Once Projeler menuden bir proje secin.</p>
             ) : null}
             <form className="form upload-grid" onSubmit={handleUpload}>
               <label>
-                File type
+                Dosya tipi
                 <select value={uploadForm.type} onChange={handleUploadChange("type")}>
-                  <option value="photo">Photo</option>
-                  <option value="test_report">Test report</option>
-                  <option value="label">Label</option>
-                  <option value="project_file">Project file</option>
+                  <option value="photo">Foto</option>
+                  <option value="test_report">Test raporu</option>
+                  <option value="label">Etiket</option>
+                  <option value="project_file">Proje dosyasi</option>
                 </select>
               </label>
               {uploadForm.type === "project_file" ? (
                 <label>
-                  Project category
+                  Proje kategorisi
                   <select value={uploadForm.category} onChange={handleUploadChange("category")}>
-                    <option value="Drawings">Drawings</option>
-                    <option value="Hydraulic">Hydraulic</option>
-                    <option value="Electrical">Electrical</option>
-                    <option value="Software">Software</option>
+                    <option value="Drawings">Cizimler</option>
+                    <option value="Hydraulic">Hidrolik</option>
+                    <option value="Electrical">Elektrik</option>
+                    <option value="Software">Yazilim</option>
                   </select>
                 </label>
               ) : null}
               <label>
-                Select files
+                Dosya sec
                 <input
                   type="file"
                   accept={uploadForm.type === "photo" ? "image/*" : "*/*"}
@@ -827,22 +827,22 @@ export default function App() {
                   onChange={handleUploadChange("files")}
                 />
               </label>
-              <button type="submit">Upload</button>
+              <button type="submit">Yukle</button>
             </form>
             {uploadStatus.message ? (
               <div className={`status-chip ${uploadStatus.type}`}>{uploadStatus.message}</div>
             ) : null}
 
             <div className="note-panel">
-              <h3>Project notes</h3>
+              <h3>Proje notlari</h3>
               <textarea
-                placeholder="Add notes for this project..."
+                placeholder="Proje notlarini ekleyin..."
                 value={noteText}
                 onChange={(event) => setNoteText(event.target.value)}
               />
               <div className="row-actions">
                 <button type="button" onClick={handleSaveNote}>
-                  Save note
+                  Notu kaydet
                 </button>
                 {noteStatus.message ? (
                   <span className={`status-chip ${noteStatus.type}`}>{noteStatus.message}</span>
