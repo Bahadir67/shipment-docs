@@ -12,6 +12,11 @@ const {
   createShareLink,
   getItem
 } = require("./graph");
+const {
+  createGDriveProductFolder,
+  uploadGDriveFile,
+  downloadGDriveFile
+} = require("./gdrive");
 const multer = require("multer");
 const mime = require("mime-types");
 const {
@@ -164,6 +169,15 @@ app.post("/products", requireAuth, async (req, res) => {
         serial
       });
     }
+    if (storage.mode === "gdrive") {
+      const result = await createGDriveProductFolder({
+        year: parsedYear,
+        customer,
+        project,
+        serial
+      });
+      storagePath = result.productFolderId;
+    }
     const product = await prisma.product.create({
       data: {
         serial,
@@ -213,31 +227,61 @@ app.post("/products/:id/files", requireAuth, upload.single("file"), async (req, 
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) return res.status(404).json({ error: "product_not_found" });
     const storage = getStorageConfig();
-    if (storage.mode !== "local") {
+    let fileRecord;
+    if (storage.mode === "local") {
+      const basePath = product.onedriveFolder || createLocalProductFolders({
+        year: product.year,
+        customer: product.customer,
+        project: product.project,
+        serial: product.serial
+      });
+      const saved = saveBufferToFile({
+        basePath,
+        type,
+        category,
+        originalName: req.file.originalname,
+        buffer: req.file.buffer
+      });
+      fileRecord = await prisma.file.create({
+        data: {
+          productId: product.id,
+          type,
+          category: category || null,
+          fileId: saved.fileName,
+          fileUrl: saved.fullPath
+        }
+      });
+    }
+    if (storage.mode === "gdrive") {
+      const folderId =
+        product.onedriveFolder ||
+        (await createGDriveProductFolder({
+          year: product.year,
+          customer: product.customer,
+          project: product.project,
+          serial: product.serial
+        })).productFolderId;
+      const saved = await uploadGDriveFile({
+        productFolderId: folderId,
+        type,
+        category,
+        originalName: req.file.originalname,
+        buffer: req.file.buffer,
+        mimeType: req.file.mimetype
+      });
+      fileRecord = await prisma.file.create({
+        data: {
+          productId: product.id,
+          type,
+          category: category || null,
+          fileId: saved.id,
+          fileUrl: saved.webViewLink || saved.webContentLink || null
+        }
+      });
+    }
+    if (!fileRecord) {
       return res.status(501).json({ error: "storage_not_configured" });
     }
-    const basePath = product.onedriveFolder || createLocalProductFolders({
-      year: product.year,
-      customer: product.customer,
-      project: product.project,
-      serial: product.serial
-    });
-    const saved = saveBufferToFile({
-      basePath,
-      type,
-      category,
-      originalName: req.file.originalname,
-      buffer: req.file.buffer
-    });
-    const fileRecord = await prisma.file.create({
-      data: {
-        productId: product.id,
-        type,
-        category: category || null,
-        fileId: saved.fileName,
-        fileUrl: saved.fullPath
-      }
-    });
     return res.status(201).json(fileRecord);
   } catch (error) {
     console.error("File upload failed", error.message);
@@ -267,6 +311,9 @@ app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
       res.setHeader("Content-Type", contentType);
       return getFileStream(file.fileUrl).pipe(res);
     }
+    if (storage.mode === "gdrive" && file.fileUrl) {
+      return res.redirect(file.fileUrl);
+    }
   } catch (error) {
     console.error("View log failed", error.message);
     return res.status(500).json({ error: "view_log_failed" });
@@ -289,18 +336,24 @@ app.get("/products/:id/files/:fileId/download", requireAuth, requireAdmin, (req,
         return res.status(404).json({ error: "file_not_found" });
       }
       const storage = getStorageConfig();
-      if (storage.mode !== "local") {
-        return res.status(501).json({ error: "storage_not_configured" });
+      if (storage.mode === "local") {
+        if (!file.fileUrl) {
+          return res.status(404).json({ error: "file_missing" });
+        }
+        res.setHeader(
+          "Content-Type",
+          mime.lookup(file.fileUrl) || "application/octet-stream"
+        );
+        res.setHeader("Content-Disposition", `attachment; filename=\"${file.fileId}\"`);
+        return getFileStream(file.fileUrl).pipe(res);
       }
-      if (!file.fileUrl) {
-        return res.status(404).json({ error: "file_missing" });
+      if (storage.mode === "gdrive") {
+        const download = await downloadGDriveFile({ fileId: file.fileId });
+        res.setHeader("Content-Type", download.mimeType || "application/octet-stream");
+        res.setHeader("Content-Disposition", `attachment; filename=\"${download.name}\"`);
+        return download.stream.pipe(res);
       }
-      res.setHeader(
-        "Content-Type",
-        mime.lookup(file.fileUrl) || "application/octet-stream"
-      );
-      res.setHeader("Content-Disposition", `attachment; filename=\"${file.fileId}\"`);
-      return getFileStream(file.fileUrl).pipe(res);
+      return res.status(501).json({ error: "storage_not_configured" });
     })
     .catch((error) => {
       console.error("File download failed", error.message);
