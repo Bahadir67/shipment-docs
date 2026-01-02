@@ -10,6 +10,8 @@ import "../data/local/file_repository.dart";
 import "../data/local/checklist_repository.dart";
 import "../data/models/user_profile.dart";
 import "../data/models/project.dart";
+import "../data/models/checklist_item.dart";
+import "../data/remote/api_client.dart";
 import "../data/remote/auth_api.dart";
 import "../data/remote/projects_api.dart";
 import "../data/remote/checklist_api.dart";
@@ -34,7 +36,7 @@ class AppState extends ChangeNotifier {
   late final ChecklistRepository checklistRepository;
   late final UserRepository userRepository;
   late final SyncEngine syncEngine;
-  StreamSubscription<ConnectivityResult>? _connectivitySub;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
 
   bool isOnline = true;
   bool isReady = false;
@@ -55,7 +57,8 @@ class AppState extends ChangeNotifier {
     final connectivity = Connectivity();
     isOnline = (await connectivity.checkConnectivity()) != ConnectivityResult.none;
     _connectivitySub = connectivity.onConnectivityChanged.listen((result) {
-      final nextOnline = result != ConnectivityResult.none;
+      final nextOnline = result.isNotEmpty &&
+          result.any((entry) => entry != ConnectivityResult.none);
       if (nextOnline != isOnline) {
         isOnline = nextOnline;
         if (isOnline) {
@@ -77,21 +80,25 @@ class AppState extends ChangeNotifier {
     required String password
   }) async {
     if (!isOnline) return false;
-    final payload = await authApi.login(username: username, password: password);
-    final userPayload = payload["user"] as Map<String, dynamic>;
-    final token = payload["token"] as String;
-    final profile = UserProfile(
-      userId: userPayload["id"] as String,
-      username: userPayload["username"] as String,
-      role: userPayload["role"] as String,
-      token: token
-    );
-    await userRepository.save(profile);
-    user = profile;
-    await refreshProjects();
-    await syncEngine.syncAll(token: profile.token);
-    notifyListeners();
-    return true;
+    try {
+      final payload = await authApi.login(username: username, password: password);
+      final userPayload = payload["user"] as Map<String, dynamic>;
+      final token = payload["token"] as String;
+      final profile = UserProfile(
+        userId: userPayload["id"] as String,
+        username: userPayload["username"] as String,
+        role: userPayload["role"] as String,
+        token: token
+      );
+      await userRepository.save(profile);
+      user = profile;
+      await refreshProjects();
+      await syncEngine.syncAll(token: profile.token);
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> refreshProjects() async {
@@ -121,7 +128,7 @@ class AppState extends ChangeNotifier {
     if (!isOnline || user?.token == null || project.serverId == null) return;
     final api = ChecklistApi(client: ApiClient(token: user!.token));
     final data = await api.listItems(project.serverId!);
-    final items = data.map((entry) {
+    final List<ChecklistItem> items = data.map<ChecklistItem>((entry) {
       return ChecklistItem(
         serverId: entry["id"] as String?,
         projectId: project.id,

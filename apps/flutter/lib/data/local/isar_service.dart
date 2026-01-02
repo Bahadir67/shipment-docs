@@ -14,17 +14,15 @@ class IsarService {
   final Isar isar;
 
   static Future<IsarService> open() async {
-    final directory = kIsWeb ? null : (await getApplicationSupportDirectory()).path;
-    final isar = await Isar.open(
-      [
-        ProjectSchema,
-        FileItemSchema,
-        ChecklistItemSchema,
-        SyncQueueItemSchema,
-        UserProfileSchema
-      ],
-      directory: directory
-    );
+    final directory = kIsWeb ? "" : (await getApplicationSupportDirectory()).path;
+    final schemas = [
+      ProjectSchema,
+      FileItemSchema,
+      ChecklistItemSchema,
+      SyncQueueItemSchema,
+      UserProfileSchema
+    ];
+    final isar = await Isar.open(schemas, directory: directory);
     return IsarService._(isar);
   }
 }
