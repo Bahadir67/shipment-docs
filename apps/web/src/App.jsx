@@ -75,6 +75,7 @@ export default function App() {
   const cachedChecklistKey = "shipment_docs_cached_checklist";
 
   const isAdmin = user?.role === "admin";
+  const hasAccess = !!user || !isOnline;
   const findSlotFile = (slot, files) =>
     files.find((file) => {
       const name = (file.fileName || "").toLowerCase();
@@ -530,7 +531,7 @@ export default function App() {
     event.preventDefault();
     setProductStatus({ type: "", message: "" });
     const token = localStorage.getItem(tokenKey);
-    if (!token) {
+    if (!token && navigator.onLine) {
       setProductStatus({ type: "error", message: "Once giris yapin." });
       return;
     }
@@ -636,9 +637,6 @@ export default function App() {
       return { ...prev, [slot.key]: previewUrl };
     });
 
-    const token = localStorage.getItem(tokenKey);
-    if (!token) return;
-
     if (!navigator.onLine) {
        await addUpload({
           productId: currentProject.id,
@@ -651,6 +649,9 @@ export default function App() {
        refreshPendingUploads();
        return;
     }
+
+    const token = localStorage.getItem(tokenKey);
+    if (!token) return;
 
     try {
         const form = new FormData();
@@ -689,7 +690,7 @@ export default function App() {
     event.preventDefault();
     setUploadStatus({ type: "", message: "" });
     const token = localStorage.getItem(tokenKey);
-    if (!token) {
+    if (!token && navigator.onLine) {
       setUploadStatus({ type: "error", message: "Once giris yapin." });
       return;
     }
@@ -715,6 +716,10 @@ export default function App() {
       setUploadStatus({ type: "success", message: "Yukleme senkron icin kuyruga alindi." });
       setUploadForm((prev) => ({ ...prev, files: [] }));
       refreshPendingUploads();
+      return;
+    }
+    if (!token) {
+      setUploadStatus({ type: "error", message: "Once giris yapin." });
       return;
     }
     try {
@@ -1013,13 +1018,13 @@ export default function App() {
           ))}
         </nav>
         <div className="nav-footer">
-          {user ? (
+          {hasAccess ? (
             <>
               <div className="sync-pill">
                 {isOnline ? "Cevrimici" : "Cevrimdisi"} • {pendingUploads} kuyrukta
               </div>
               <div className="user-pill">
-                {user.username} • {user.role}
+                {user ? user.username : "Offline"} • {user ? user.role : "user"}
               </div>
               <button type="button" className="ghost" onClick={syncAll} disabled={syncing}>
                 {syncing ? "Senkron..." : "Simdi senkronla"}
@@ -1083,7 +1088,7 @@ export default function App() {
           </section>
         ) : null}
 
-        {!user ? (
+        {!hasAccess ? (
           <section className="panel">
             <h2>Giris</h2>
             <p>Calisma alanina ulasmak icin giris yapin.</p>
@@ -1114,7 +1119,7 @@ export default function App() {
           </section>
         ) : null}
 
-        {user && activePage === "dashboard" ? (
+        {hasAccess && activePage === "dashboard" ? (
           <section className="grid">
             <div className="panel">
               <h2>Hizli ozet</h2>
@@ -1157,7 +1162,7 @@ export default function App() {
           </section>
         ) : null}
 
-        {user && activePage === "projects" ? (
+        {hasAccess && activePage === "projects" ? (
           <section className="panel">
             <h2>Tum projeler</h2>
             <p className="hint">Yalnizca admin duzenleyebilir veya silebilir.</p>
@@ -1258,7 +1263,7 @@ export default function App() {
           </section>
         ) : null}
 
-        {user && activePage === "new" ? (
+        {hasAccess && activePage === "new" ? (
           <section className="panel">
             <h2>Yeni proje</h2>
             <p className="hint">
@@ -1318,7 +1323,7 @@ export default function App() {
           </section>
         ) : null}
 
-        {user && activePage === "uploads" ? (
+        {hasAccess && activePage === "uploads" ? (
           <section className="grid detay-grid">
             <div className="panel">
               <h2>Kontrol Listesi</h2>
