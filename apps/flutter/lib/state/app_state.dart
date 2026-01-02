@@ -5,8 +5,11 @@ import "package:flutter/foundation.dart";
 import "package:isar/isar.dart";
 
 import "../data/local/user_repository.dart";
+import "../data/local/project_repository.dart";
 import "../data/models/user_profile.dart";
+import "../data/models/project.dart";
 import "../data/remote/auth_api.dart";
+import "../data/remote/projects_api.dart";
 import "../data/sync/sync_engine.dart";
 
 class AppState extends ChangeNotifier {
@@ -15,11 +18,13 @@ class AppState extends ChangeNotifier {
     required this.authApi
   }) {
     userRepository = UserRepository(isar);
+    projectRepository = ProjectRepository(isar);
     syncEngine = SyncEngine(isar: isar);
   }
 
   final Isar isar;
   final AuthApi authApi;
+  late final ProjectRepository projectRepository;
   late final UserRepository userRepository;
   late final SyncEngine syncEngine;
   StreamSubscription<ConnectivityResult>? _connectivitySub;
@@ -44,6 +49,9 @@ class AppState extends ChangeNotifier {
       }
     });
     user = await userRepository.getCurrent();
+    if (user != null && isOnline) {
+      await refreshProjects();
+    }
     isReady = true;
     notifyListeners();
   }
@@ -64,9 +72,32 @@ class AppState extends ChangeNotifier {
     );
     await userRepository.save(profile);
     user = profile;
+    await refreshProjects();
     await syncEngine.syncAll(token: profile.token);
     notifyListeners();
     return true;
+  }
+
+  Future<void> refreshProjects() async {
+    if (!isOnline || user?.token == null) return;
+    final api = ProjectsApi(client: ApiClient(token: user!.token));
+    final data = await api.listProjects();
+    final recent = data.take(5).map((entry) {
+      return Project(
+        serverId: entry["id"] as String,
+        serial: entry["serial"] as String,
+        customer: entry["customer"] as String,
+        project: entry["project"] as String,
+        productType: entry["productType"] as String?,
+        year: entry["year"] as int,
+        status: entry["status"] as String? ?? "open",
+        createdAt: DateTime.tryParse(entry["createdAt"] as String? ?? "") ??
+            DateTime.now(),
+        updatedAt: DateTime.tryParse(entry["updatedAt"] as String? ?? "") ??
+            DateTime.now()
+      );
+    }).toList();
+    await projectRepository.upsertRemote(recent);
   }
 
   Future<void> logout() async {

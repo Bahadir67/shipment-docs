@@ -1,6 +1,10 @@
 import "package:flutter/material.dart";
 
 import "../state/app_scope.dart";
+import "tabs/dashboard_tab.dart";
+import "tabs/projects_tab.dart";
+import "tabs/new_project_tab.dart";
+import "tabs/uploads_tab.dart";
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +23,13 @@ class _HomeScreenState extends State<HomeScreen> {
     "Yuklemeler"
   ];
 
+  final _pages = const [
+    DashboardTab(),
+    ProjectsTab(),
+    NewProjectTab(),
+    UploadsTab()
+  ];
+
   @override
   Widget build(BuildContext context) {
     final appState = AppScope.of(context);
@@ -35,9 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
           )
         ]
       ),
-      body: Center(
-        child: Text("${_tabs[_index]} (MVP)")
-      ),
+      body: _pages[_index],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (value) => setState(() => _index = value),
