@@ -884,10 +884,14 @@ export default function App() {
         }
       }
       const cached = loadCachedProjects();
-      setProducts(mergeById(pending, cached));
+      const offlineProducts = mergeById(pending, cached);
+      setProducts(offlineProducts);
+      if (!storedUser && offlineProducts.length) {
+        setUser({ username: "Offline", role: "user" });
+      }
       const storedId = localStorage.getItem(currentProjectKey);
       if (storedId) {
-        const storedProject = mergeById(pending, cached).find(
+        const storedProject = offlineProducts.find(
           (item) => item.id === storedId
         );
         if (storedProject) setCurrentProject(storedProject);
