@@ -11,6 +11,15 @@ const menuItems = [
   { id: "uploads", label: "Yuklemeler" }
 ];
 
+const PHOTO_SLOTS = [
+  { id: "front", label: "Onden", key: "onden" },
+  { id: "right", label: "Sagdan", key: "sagdan" },
+  { id: "left", label: "Soldan", key: "soldan" },
+  { id: "back", label: "Arkadan", key: "arkadan" },
+  { id: "label", label: "Etiket", key: "etiket" },
+  { id: "general", label: "Genel", key: "genel" }
+];
+
 export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [username, setUsername] = useState("");
@@ -30,7 +39,7 @@ export default function App() {
   const [checklist, setChecklist] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
   const [uploadForm, setUploadForm] = useState({
-    type: "photo",
+    type: "test_report", // Default to document type
     category: "Drawings",
     files: []
   });
@@ -88,7 +97,6 @@ export default function App() {
     if (!token) return;
     const nextStatus = !item.completed;
 
-    // Optimistic update
     setChecklist((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, completed: nextStatus } : i))
     );
@@ -108,7 +116,6 @@ export default function App() {
       });
       if (!response.ok) throw new Error();
     } catch (error) {
-      // Revert on error
       setChecklist((prev) =>
         prev.map((i) => (i.id === item.id ? { ...i, completed: !nextStatus } : i))
       );
@@ -351,6 +358,60 @@ export default function App() {
     }
   };
 
+  // Specific handler for grid photos
+  const handleGridFileSelect = async (slot, event) => {
+    const file = event.target.files?.[0];
+    if (!file || !currentProject) return;
+
+    // Reset value to allow re-upload of same file
+    event.target.value = "";
+
+    // Generate new filename: key.extension
+    const ext = file.name.split(".").pop();
+    const fileName = `${slot.key}.${ext}`;
+
+    const token = localStorage.getItem(tokenKey);
+    if (!token) return;
+
+    if (!navigator.onLine) {
+       await addUpload({
+          productId: currentProject.id,
+          type: "photo",
+          category: slot.label, // Use label as category for easy filtering
+          file,
+          fileName: fileName, // Use enforced filename
+          mimeType: file.type
+       });
+       refreshPendingUploads();
+       // Optimistic update logic for UI could be added here if needed
+       return;
+    }
+
+    try {
+        const form = new FormData();
+        form.append("type", "photo");
+        form.append("category", slot.label);
+        // Important: Pass filename to FormData
+        form.append("file", file, fileName);
+        
+        const response = await fetch(
+          `${apiBase}/products/${currentProject.id}/files`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            body: form
+          }
+        );
+        
+        if (response.ok) {
+            // Refresh file list to show new thumbnail
+            fetchProjectFiles(token, currentProject.id);
+        }
+    } catch (error) {
+        console.error("Grid upload failed", error);
+    }
+  };
+
   const handleUpload = async (event) => {
     event.preventDefault();
     setUploadStatus({ type: "", message: "" });
@@ -407,6 +468,7 @@ export default function App() {
       }
       setUploadStatus({ type: "success", message: "Yuklendi." });
       setUploadForm((prev) => ({ ...prev, files: [] }));
+      fetchProjectFiles(token, currentProject.id);
     } catch (error) {
       setUploadStatus({ type: "error", message: "Ag hatasi. Tekrar deneyin." });
     }
@@ -875,7 +937,44 @@ export default function App() {
             </div>
 
             <div className="panel">
-              <h2>Dosya Yukle</h2>
+              <h2>Fotograflar</h2>
+              {!currentProject ? <p className="hint">Once Projeler menuden bir proje secin.</p> : (
+                <div className="photo-grid-container">
+                  {PHOTO_SLOTS.map((slot) => {
+                    // Find uploaded file that matches this slot key
+                    const existingFile = projectFiles.find(
+                      (f) => f.type === 'photo' && (f.fileName || "").toLowerCase().startsWith(slot.key)
+                    );
+                    
+                    return (
+                      <label key={slot.id} className={`photo-slot ${existingFile ? "has-photo" : ""}`}>
+                        <input
+                           type="file"
+                           className="visually-hidden"
+                           accept="image/*"
+                           capture="environment"
+                           onChange={(e) => handleGridFileSelect(slot, e)}
+                        />
+                        {existingFile ? (
+                          <>
+                            <img src={existingFile.fileUrl} alt={slot.label} />
+                            <div className="slot-overlay">
+                              <span className="material-icons-round">photo_camera</span>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="slot-content">
+                            <span className="slot-icon">photo_camera</span>
+                            <span className="slot-label">{slot.label}</span>
+                          </div>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+
+              <h2>Diger Dosyalar</h2>
               {!currentProject ? (
                 <p className="hint">Once Projeler menuden bir proje secin.</p>
               ) : null}
@@ -883,10 +982,10 @@ export default function App() {
                 <label>
                   Dosya tipi
                   <select value={uploadForm.type} onChange={handleUploadChange("type")}>
-                    <option value="photo">Foto</option>
                     <option value="test_report">Test raporu</option>
-                    <option value="label">Etiket</option>
+                    <option value="label">Etiket (PDF vb)</option>
                     <option value="project_file">Proje dosyasi</option>
+                    <option value="photo">Diger Foto</option>
                   </select>
                 </label>
                 {uploadForm.type === "project_file" ? (
@@ -935,7 +1034,7 @@ export default function App() {
                   <li key={file.id}>
                     <div>
                       <strong>{file.type.toUpperCase()}</strong>
-                      <span>{file.category || ""}</span>
+                      <span>{file.fileName}</span>
                     </div>
                     <a
                       href={file.fileUrl}
