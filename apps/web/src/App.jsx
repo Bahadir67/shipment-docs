@@ -70,6 +70,9 @@ export default function App() {
   const currentProjectKey = "shipment_docs_current_project";
   const lastUserKey = "shipment_docs_last_user";
   const pendingChecklistKey = "shipment_docs_pending_checklist";
+  const cachedProjectsKey = "shipment_docs_cached_projects";
+  const cachedFilesKey = "shipment_docs_cached_files";
+  const cachedChecklistKey = "shipment_docs_cached_checklist";
 
   const isAdmin = user?.role === "admin";
   const findSlotFile = (slot, files) =>
@@ -91,6 +94,9 @@ export default function App() {
       if (response.ok) {
         const payload = await response.json();
         setChecklist(payload.data || []);
+        const cache = loadCachedChecklist();
+        cache[productId] = payload.data || [];
+        saveCachedChecklist(cache);
       }
     } catch (error) {
       console.error("Checklist fetch failed");
@@ -110,6 +116,9 @@ export default function App() {
           fileName: f.fileName || f.fileId // Fallback to fileId if fileName missing
         }));
         setProjectFiles(normalized);
+        const cache = loadCachedFiles();
+        cache[productId] = normalized;
+        saveCachedFiles(cache);
       }
     } catch (error) {
       console.error("Files fetch failed");
@@ -283,6 +292,58 @@ export default function App() {
     localStorage.setItem(notesKey, JSON.stringify(notes));
   };
 
+  const mergeById = (primary, secondary) => {
+    const seen = new Set();
+    const merged = [];
+    for (const item of primary) {
+      if (!item || !item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      merged.push(item);
+    }
+    for (const item of secondary) {
+      if (!item || !item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      merged.push(item);
+    }
+    return merged;
+  };
+
+  const loadCachedProjects = () => {
+    try {
+      return JSON.parse(localStorage.getItem(cachedProjectsKey) || "[]");
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const saveCachedProjects = (list) => {
+    localStorage.setItem(cachedProjectsKey, JSON.stringify(list));
+  };
+
+  const loadCachedFiles = () => {
+    try {
+      return JSON.parse(localStorage.getItem(cachedFilesKey) || "{}");
+    } catch (error) {
+      return {};
+    }
+  };
+
+  const saveCachedFiles = (cache) => {
+    localStorage.setItem(cachedFilesKey, JSON.stringify(cache));
+  };
+
+  const loadCachedChecklist = () => {
+    try {
+      return JSON.parse(localStorage.getItem(cachedChecklistKey) || "{}");
+    } catch (error) {
+      return {};
+    }
+  };
+
+  const saveCachedChecklist = (cache) => {
+    localStorage.setItem(cachedChecklistKey, JSON.stringify(cache));
+  };
+
   const loadPendingChecklist = () => {
     try {
       return JSON.parse(localStorage.getItem(pendingChecklistKey) || "[]");
@@ -321,7 +382,9 @@ export default function App() {
       if (!response.ok) return;
       const payload = await response.json();
       const pending = loadPendingProducts();
-      const combined = [...(pending || []), ...(payload.data || [])];
+      const recent = (payload.data || []).filter((item) => item.status !== "deleted").slice(0, 5);
+      saveCachedProjects(recent);
+      const combined = mergeById(pending || [], payload.data || []);
       setProducts(combined);
       if (!currentProject) {
         const storedId = localStorage.getItem(currentProjectKey);
@@ -820,10 +883,13 @@ export default function App() {
           localStorage.removeItem(lastUserKey);
         }
       }
-      setProducts(pending);
+      const cached = loadCachedProjects();
+      setProducts(mergeById(pending, cached));
       const storedId = localStorage.getItem(currentProjectKey);
       if (storedId) {
-        const storedProject = pending.find((item) => item.id === storedId);
+        const storedProject = mergeById(pending, cached).find(
+          (item) => item.id === storedId
+        );
         if (storedProject) setCurrentProject(storedProject);
       }
     } else if (storedToken) {
@@ -869,6 +935,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    let cancelled = false;
+    navigator.serviceWorker.ready
+      .then(() => {
+        if (cancelled) return;
+        localStorage.setItem("shipment_docs_offline_ready", "true");
+        setOfflineReady(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!currentProject) return;
     const notes = loadNotes();
     setNoteText(notes[currentProject.id] || "");
@@ -883,6 +964,13 @@ export default function App() {
       return;
     }
     localStorage.setItem(currentProjectKey, currentProject.id);
+    if (!navigator.onLine) {
+      const cachedChecklist = loadCachedChecklist();
+      const cachedFiles = loadCachedFiles();
+      setChecklist(cachedChecklist[currentProject.id] || []);
+      setProjectFiles(cachedFiles[currentProject.id] || []);
+      return;
+    }
     if (!token) return;
     fetchChecklist(token, currentProject.id);
     fetchProjectFiles(token, currentProject.id);
