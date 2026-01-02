@@ -886,7 +886,7 @@ export default function App() {
       const cached = loadCachedProjects();
       const offlineProducts = mergeById(pending, cached);
       setProducts(offlineProducts);
-      if (!storedUser && offlineProducts.length) {
+      if (!storedUser) {
         setUser({ username: "Offline", role: "user" });
       }
       const storedId = localStorage.getItem(currentProjectKey);
@@ -1024,9 +1024,11 @@ export default function App() {
               <button type="button" className="ghost" onClick={syncAll} disabled={syncing}>
                 {syncing ? "Senkron..." : "Simdi senkronla"}
               </button>
-              <button type="button" onClick={handleLogout}>
-                Cikis
-              </button>
+              {isOnline ? (
+                <button type="button" onClick={handleLogout}>
+                  Cikis
+                </button>
+              ) : null}
             </>
           ) : (
             <p className="card-sub">Baslamak icin giris yapin.</p>
