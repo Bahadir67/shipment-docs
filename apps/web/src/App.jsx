@@ -741,7 +741,6 @@ export default function App() {
     if (!currentProject) {
       setChecklist([]);
       setProjectFiles([]);
-      localStorage.removeItem(currentProjectKey);
       return;
     }
     localStorage.setItem(currentProjectKey, currentProject.id);
