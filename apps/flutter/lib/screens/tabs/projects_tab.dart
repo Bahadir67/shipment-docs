@@ -1,6 +1,7 @@
 import "package:flutter/material.dart";
 
 import "../../state/app_scope.dart";
+import "../project_detail_screen.dart";
 
 class ProjectsTab extends StatefulWidget {
   const ProjectsTab({super.key});
@@ -63,8 +64,10 @@ class _ProjectsTabState extends State<ProjectsTab> {
                     trailing: Text(item.status),
                     onTap: () {
                       appState.setCurrentProject(item);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Proje secildi."))
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const ProjectDetailScreen()
+                        )
                       );
                     }
                   );

@@ -1,6 +1,7 @@
 import "package:flutter/material.dart";
 
 import "../../state/app_scope.dart";
+import "../project_detail_screen.dart";
 
 class DashboardTab extends StatelessWidget {
   const DashboardTab({super.key});
@@ -22,7 +23,15 @@ class DashboardTab extends StatelessWidget {
             return ListTile(
               title: Text(item.project),
               subtitle: Text("${item.serial} • ${item.customer}"),
-              trailing: Text(item.status)
+              trailing: Text(item.status),
+              onTap: () {
+                appState.setCurrentProject(item);
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const ProjectDetailScreen()
+                  )
+                );
+              }
             );
           },
           separatorBuilder: (_, __) => const Divider(),
