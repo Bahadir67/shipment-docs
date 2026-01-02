@@ -900,16 +900,27 @@ export default function App() {
                     </select>
                   </label>
                 ) : null}
-                <label>
-                  Dosya sec
-                  <input
-                    type="file"
-                    accept={uploadForm.type === "photo" ? "image/*" : "*/*"}
-                    capture={uploadForm.type === "photo" ? "environment" : undefined}
-                    multiple
-                    onChange={handleUploadChange("files")}
-                  />
-                </label>
+                <div className="file-input-group">
+                  <span className="input-label">Dosya sec</span>
+                  <label className={`file-drop-zone ${uploadForm.files.length ? "has-files" : ""}`}>
+                    <input
+                      type="file"
+                      className="visually-hidden"
+                      accept={uploadForm.type === "photo" ? "image/*" : "*/*"}
+                      capture={uploadForm.type === "photo" ? "environment" : undefined}
+                      multiple
+                      onChange={handleUploadChange("files")}
+                    />
+                    <div className="drop-content">
+                      <span className="drop-icon">{uploadForm.files.length ? "check_circle" : "cloud_upload"}</span>
+                      <span className="drop-text">
+                        {uploadForm.files.length > 0
+                          ? `${uploadForm.files.length} dosya hazir`
+                          : "Dosyalari secin veya buraya birakin"}
+                      </span>
+                    </div>
+                  </label>
+                </div>
                 <button type="submit">Yukle</button>
               </form>
               {uploadStatus.message ? (
