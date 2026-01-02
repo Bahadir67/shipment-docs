@@ -189,10 +189,95 @@ app.post("/products", requireAuth, async (req, res) => {
         onedriveFolder: storagePath
       }
     });
+
+    // Initialize default checklist for demo
+    const defaultItems = [
+      { category: "Visual", itemKey: "visual_inspection", label: "Gorsel Kontrol" },
+      { category: "Mechanical", itemKey: "oil_level_check", label: "Yag Seviyesi Kontrolu" },
+      { category: "Test", itemKey: "pressure_test", label: "Basinc Testi Tamam" },
+      { category: "Electrical", itemKey: "wiring_check", label: "Kablolama Kontrolu" },
+      { category: "Final", itemKey: "labels_attached", label: "Etiketler Takildi" },
+      { category: "Final", itemKey: "cleaning", label: "Son Temizlik" }
+    ];
+
+    await Promise.all(
+      defaultItems.map((item) =>
+        prisma.checklistItem.create({
+          data: {
+            productId: product.id,
+            category: item.category,
+            itemKey: item.itemKey,
+            completed: false
+          }
+        })
+      )
+    );
+
     return res.status(201).json(product);
   } catch (error) {
     console.error("Product create failed", error.message);
     return res.status(500).json({ error: "product_create_failed" });
+  }
+});
+
+app.get("/products/:id/checklist", requireAuth, async (req, res) => {
+  try {
+    const items = await prisma.checklistItem.findMany({
+      where: { productId: req.params.id },
+      orderBy: { category: "asc" }
+    });
+    return res.json({ data: items });
+  } catch (error) {
+    return res.status(500).json({ error: "checklist_fetch_failed" });
+  }
+});
+
+app.post("/products/:id/checklist", requireAuth, async (req, res) => {
+  const { itemKey, completed } = req.body || {};
+  if (!itemKey) return res.status(400).json({ error: "missing_item_key" });
+  try {
+    const updated = await prisma.checklistItem.update({
+      where: {
+        productId_category_itemKey: {
+          productId: req.params.id,
+          category: req.body.category, // Assuming category is passed or found
+          itemKey
+        }
+      },
+      data: {
+        completed: !!completed,
+        updatedAt: new Date()
+      }
+    });
+    return res.json(updated);
+  } catch (error) {
+    // If specific unique constraint update fails, try finding by productId and itemKey only
+    try {
+        const item = await prisma.checklistItem.findFirst({
+            where: { productId: req.params.id, itemKey }
+        });
+        if (item) {
+            const updated = await prisma.checklistItem.update({
+                where: { id: item.id },
+                data: { completed: !!completed, updatedAt: new Date() }
+            });
+            return res.json(updated);
+        }
+    } catch (e) {}
+    console.error("Checklist update failed", error.message);
+    return res.status(500).json({ error: "checklist_update_failed" });
+  }
+});
+
+app.get("/products/:id/files", requireAuth, async (req, res) => {
+  try {
+    const files = await prisma.file.findMany({
+      where: { productId: req.params.id },
+      orderBy: { createdAt: "desc" }
+    });
+    return res.json({ data: files });
+  } catch (error) {
+    return res.status(500).json({ error: "files_fetch_failed" });
   }
 });
 

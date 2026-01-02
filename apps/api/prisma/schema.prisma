@@ -43,6 +43,18 @@ model File {
   product   Product? @relation(fields: [productId], references: [id])
 }
 
+model ChecklistItem {
+  id        String   @id @default(uuid())
+  productId String
+  category  String
+  itemKey   String
+  completed Boolean  @default(false)
+  updatedAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([productId, category, itemKey])
+}
+
 model ViewLog {
   id        String   @id @default(uuid())
   userId    String

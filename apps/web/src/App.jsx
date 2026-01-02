@@ -27,6 +27,8 @@ export default function App() {
   });
   const [productStatus, setProductStatus] = useState({ type: "", message: "" });
   const [currentProject, setCurrentProject] = useState(null);
+  const [checklist, setChecklist] = useState([]);
+  const [projectFiles, setProjectFiles] = useState([]);
   const [uploadForm, setUploadForm] = useState({
     type: "photo",
     category: "Drawings",
@@ -52,6 +54,66 @@ export default function App() {
   const notesKey = "shipment_docs_notes";
 
   const isAdmin = user?.role === "admin";
+
+  const fetchChecklist = async (token, productId) => {
+    try {
+      const response = await fetch(`${apiBase}/products/${productId}/checklist`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        setChecklist(payload.data || []);
+      }
+    } catch (error) {
+      console.error("Checklist fetch failed");
+    }
+  };
+
+  const fetchProjectFiles = async (token, productId) => {
+    try {
+      const response = await fetch(`${apiBase}/products/${productId}/files`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const payload = await response.json();
+        setProjectFiles(payload.data || []);
+      }
+    } catch (error) {
+      console.error("Files fetch failed");
+    }
+  };
+
+  const toggleChecklistItem = async (item) => {
+    const token = localStorage.getItem(tokenKey);
+    if (!token) return;
+    const nextStatus = !item.completed;
+
+    // Optimistic update
+    setChecklist((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, completed: nextStatus } : i))
+    );
+
+    try {
+      const response = await fetch(`${apiBase}/products/${currentProject.id}/checklist`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          itemKey: item.itemKey,
+          category: item.category,
+          completed: nextStatus
+        })
+      });
+      if (!response.ok) throw new Error();
+    } catch (error) {
+      // Revert on error
+      setChecklist((prev) =>
+        prev.map((i) => (i.id === item.id ? { ...i, completed: !nextStatus } : i))
+      );
+    }
+  };
 
   const projectCode = useMemo(() => {
     if (!productForm.projectSuffix) return "";
@@ -791,50 +853,95 @@ export default function App() {
         ) : null}
 
         {user && activePage === "uploads" ? (
-          <section className="panel">
-            <h2>Yuklemeler</h2>
-            {!currentProject ? (
-              <p className="hint">Once Projeler menuden bir proje secin.</p>
-            ) : null}
-            <form className="form upload-grid" onSubmit={handleUpload}>
-              <label>
-                Dosya tipi
-                <select value={uploadForm.type} onChange={handleUploadChange("type")}>
-                  <option value="photo">Foto</option>
-                  <option value="test_report">Test raporu</option>
-                  <option value="label">Etiket</option>
-                  <option value="project_file">Proje dosyasi</option>
-                </select>
-              </label>
-              {uploadForm.type === "project_file" ? (
+          <section className="grid detay-grid">
+            <div className="panel">
+              <h2>Kontrol Listesi</h2>
+              {!currentProject ? <p className="hint">Once proje secin.</p> : null}
+              <ul className="checklist">
+                {checklist.map((item) => (
+                  <li key={item.id} className={item.completed ? "done" : ""}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={item.completed}
+                        onChange={() => toggleChecklistItem(item)}
+                      />
+                      <span>{item.itemKey.replace(/_/g, " ").toUpperCase()}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              {currentProject && checklist.length === 0 && <p className="hint">Liste yukleniyor veya bos...</p>}
+            </div>
+
+            <div className="panel">
+              <h2>Dosya Yukle</h2>
+              {!currentProject ? (
+                <p className="hint">Once Projeler menuden bir proje secin.</p>
+              ) : null}
+              <form className="form upload-grid" onSubmit={handleUpload}>
                 <label>
-                  Proje kategorisi
-                  <select value={uploadForm.category} onChange={handleUploadChange("category")}>
-                    <option value="Drawings">Cizimler</option>
-                    <option value="Hydraulic">Hidrolik</option>
-                    <option value="Electrical">Elektrik</option>
-                    <option value="Software">Yazilim</option>
+                  Dosya tipi
+                  <select value={uploadForm.type} onChange={handleUploadChange("type")}>
+                    <option value="photo">Foto</option>
+                    <option value="test_report">Test raporu</option>
+                    <option value="label">Etiket</option>
+                    <option value="project_file">Proje dosyasi</option>
                   </select>
                 </label>
+                {uploadForm.type === "project_file" ? (
+                  <label>
+                    Proje kategorisi
+                    <select value={uploadForm.category} onChange={handleUploadChange("category")}>
+                      <option value="Drawings">Cizimler</option>
+                      <option value="Hydraulic">Hidrolik</option>
+                      <option value="Electrical">Elektrik</option>
+                      <option value="Software">Yazilim</option>
+                    </select>
+                  </label>
+                ) : null}
+                <label>
+                  Dosya sec
+                  <input
+                    type="file"
+                    accept={uploadForm.type === "photo" ? "image/*" : "*/*"}
+                    capture={uploadForm.type === "photo" ? "environment" : undefined}
+                    multiple
+                    onChange={handleUploadChange("files")}
+                  />
+                </label>
+                <button type="submit">Yukle</button>
+              </form>
+              {uploadStatus.message ? (
+                <div className={`status-chip ${uploadStatus.type}`}>{uploadStatus.message}</div>
               ) : null}
-              <label>
-                Dosya sec
-                <input
-                  type="file"
-                  accept={uploadForm.type === "photo" ? "image/*" : "*/*"}
-                  capture={uploadForm.type === "photo" ? "environment" : undefined}
-                  multiple
-                  onChange={handleUploadChange("files")}
-                />
-              </label>
-              <button type="submit">Yukle</button>
-            </form>
-            {uploadStatus.message ? (
-              <div className={`status-chip ${uploadStatus.type}`}>{uploadStatus.message}</div>
-            ) : null}
+            </div>
 
-            <div className="note-panel">
-              <h3>Proje notlari</h3>
+            <div className="panel">
+              <h2>Yuklenen Dosyalar</h2>
+              <ul className="list file-list">
+                {projectFiles.map((file) => (
+                  <li key={file.id}>
+                    <div>
+                      <strong>{file.type.toUpperCase()}</strong>
+                      <span>{file.category || ""}</span>
+                    </div>
+                    <a
+                      href={file.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="button ghost"
+                    >
+                      Goruntule
+                    </a>
+                  </li>
+                ))}
+                {projectFiles.length === 0 && <p className="hint">Henuz dosya yuklenmemis.</p>}
+              </ul>
+            </div>
+
+            <div className="panel">
+              <h3>Proje Notlari</h3>
               <textarea
                 placeholder="Proje notlarini ekleyin..."
                 value={noteText}
