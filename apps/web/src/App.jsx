@@ -962,9 +962,13 @@ export default function App() {
               {!currentProject ? <p className="hint">Once Projeler menuden bir proje secin.</p> : (
                 <div className="photo-grid-container">
                   {PHOTO_SLOTS.map((slot) => {
-                    // Find uploaded file that matches this slot key
+                    // Find uploaded file that matches this slot key (check for timestamp prefix too)
+                    // Matches: "onden.jpg", "123456_onden.jpg", "onden_old.png"
                     const existingFile = projectFiles.find(
-                      (f) => f.type === 'photo' && (f.fileName || "").toLowerCase().startsWith(slot.key)
+                      (f) => {
+                        const name = (f.fileName || "").toLowerCase();
+                        return name.includes(slot.key);
+                      }
                     );
                     
                     // Add cache busting param if it's a remote URL (not a blob)
