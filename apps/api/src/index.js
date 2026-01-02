@@ -27,7 +27,8 @@ const {
 } = require("./storage");
 
 const app = express();
-app.use(cors());
+// Allow all origins for demo purposes
+app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "10mb" }));
 const upload = multer({ storage: multer.memoryStorage() });
 
