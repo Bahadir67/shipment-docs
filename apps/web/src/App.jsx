@@ -44,6 +44,7 @@ export default function App() {
   const [checklist, setChecklist] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState({});
+  const [slotPreviews, setSlotPreviews] = useState({});
   const [uploadForm, setUploadForm] = useState({
     type: "test_report", // Default to document type
     category: "Drawings",
@@ -106,6 +107,8 @@ export default function App() {
   useEffect(() => {
     Object.values(photoPreviews).forEach((url) => URL.revokeObjectURL(url));
     setPhotoPreviews({});
+    Object.values(slotPreviews).forEach((url) => URL.revokeObjectURL(url));
+    setSlotPreviews({});
   }, [currentProject?.id]);
 
   useEffect(() => {
@@ -152,6 +155,31 @@ export default function App() {
 
     return () => controller.abort();
   }, [projectFiles, currentProject?.id, photoPreviews, apiBase]);
+
+  useEffect(() => {
+    if (!currentProject) return;
+    setSlotPreviews((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const slot of PHOTO_SLOTS) {
+        const previewUrl = next[slot.key];
+        if (!previewUrl) continue;
+        const existingFile = projectFiles.find((file) => {
+          const name = (file.fileName || "").toLowerCase();
+          return name.includes(slot.key);
+        });
+        if (!existingFile) continue;
+        const hasRemote = isRemoteUrl(existingFile.fileUrl);
+        const hasPreview = !!photoPreviews[existingFile.id];
+        if (hasRemote || hasPreview) {
+          URL.revokeObjectURL(previewUrl);
+          delete next[slot.key];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [projectFiles, photoPreviews, currentProject?.id]);
 
   const toggleChecklistItem = async (item) => {
     const token = localStorage.getItem(tokenKey);
@@ -432,11 +460,12 @@ export default function App() {
     const fileName = `${slot.key}.${ext}`;
 
     // Create optimistic file object for immediate preview
+    const previewUrl = URL.createObjectURL(file);
     const optimisticFile = {
       id: `temp-${Date.now()}`,
       type: "photo",
       fileName: fileName,
-      fileUrl: URL.createObjectURL(file), // Local preview URL
+      fileUrl: previewUrl, // Local preview URL
       createdAt: new Date().toISOString()
     };
 
@@ -445,6 +474,11 @@ export default function App() {
       // Remove existing file for this slot if any
       const filtered = prev.filter(f => !f.fileName.toLowerCase().startsWith(slot.key));
       return [optimisticFile, ...filtered];
+    });
+    setSlotPreviews((prev) => {
+      const existing = prev[slot.key];
+      if (existing) URL.revokeObjectURL(existing);
+      return { ...prev, [slot.key]: previewUrl };
     });
 
     const token = localStorage.getItem(tokenKey);
@@ -1037,7 +1071,9 @@ export default function App() {
                         : null;
                     const displayUrl = existingFile?.fileUrl?.startsWith("blob:")
                       ? existingFile.fileUrl
-                      : photoPreviews[existingFile?.id] || remoteUrl;
+                      : photoPreviews[existingFile?.id] ||
+                        remoteUrl ||
+                        slotPreviews[slot.key];
                     const isLoadingPreview = !!existingFile && !displayUrl;
 
                     return (
