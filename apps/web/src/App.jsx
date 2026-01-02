@@ -542,8 +542,15 @@ export default function App() {
         }
     } catch (error) {
         console.error("Grid upload failed", error);
-        // Revert optimistic update on error (optional, but good practice)
-        fetchProjectFiles(token, currentProject.id);
+        await addUpload({
+          productId: currentProject.id,
+          type: "photo",
+          category: slot.label,
+          file,
+          fileName: fileName,
+          mimeType: file.type
+        });
+        refreshPendingUploads();
     }
   };
 
@@ -605,7 +612,19 @@ export default function App() {
       setUploadForm((prev) => ({ ...prev, files: [] }));
       fetchProjectFiles(token, currentProject.id);
     } catch (error) {
-      setUploadStatus({ type: "error", message: "Ag hatasi. Tekrar deneyin." });
+      for (const file of uploadForm.files) {
+        await addUpload({
+          productId: currentProject.id,
+          type: uploadForm.type,
+          category: uploadForm.type === "project_file" ? uploadForm.category : null,
+          file,
+          fileName: file.name,
+          mimeType: file.type
+        });
+      }
+      setUploadStatus({ type: "success", message: "Yukleme senkron icin kuyruga alindi." });
+      setUploadForm((prev) => ({ ...prev, files: [] }));
+      refreshPendingUploads();
     }
   };
 

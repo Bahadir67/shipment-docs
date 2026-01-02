@@ -54,6 +54,11 @@ function getSessionExpiry() {
 }
 
 async function createSession(userId) {
+  await prisma.session.deleteMany({
+    where: {
+      OR: [{ userId }, { expiresAt: { lt: new Date() } }]
+    }
+  });
   const token = crypto.randomBytes(24).toString("hex");
   await prisma.session.create({
     data: {
