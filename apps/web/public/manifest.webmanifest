@@ -1,0 +1,16 @@
+{
+  "name": "Shipment Docs",
+  "short_name": "ShipmentDocs",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1a1c",
+  "theme_color": "#0f1a1c",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

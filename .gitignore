@@ -4,6 +4,9 @@ node_modules/
 # Env
 .env
 
+# Secrets
+apps/api/Keys/
+
 # Logs
 *.log
 
