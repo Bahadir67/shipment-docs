@@ -363,12 +363,28 @@ export default function App() {
     const file = event.target.files?.[0];
     if (!file || !currentProject) return;
 
-    // Reset value to allow re-upload of same file
+    // Reset value to allow re-upload
     event.target.value = "";
 
-    // Generate new filename: key.extension
+    // Generate new filename
     const ext = file.name.split(".").pop();
     const fileName = `${slot.key}.${ext}`;
+
+    // Create optimistic file object for immediate preview
+    const optimisticFile = {
+      id: `temp-${Date.now()}`,
+      type: "photo",
+      fileName: fileName,
+      fileUrl: URL.createObjectURL(file), // Local preview URL
+      createdAt: new Date().toISOString()
+    };
+
+    // Update state immediately to show thumbnail
+    setProjectFiles((prev) => {
+      // Remove existing file for this slot if any
+      const filtered = prev.filter(f => !f.fileName.toLowerCase().startsWith(slot.key));
+      return [optimisticFile, ...filtered];
+    });
 
     const token = localStorage.getItem(tokenKey);
     if (!token) return;
@@ -377,13 +393,12 @@ export default function App() {
        await addUpload({
           productId: currentProject.id,
           type: "photo",
-          category: slot.label, // Use label as category for easy filtering
+          category: slot.label,
           file,
-          fileName: fileName, // Use enforced filename
+          fileName: fileName,
           mimeType: file.type
        });
        refreshPendingUploads();
-       // Optimistic update logic for UI could be added here if needed
        return;
     }
 
@@ -391,7 +406,6 @@ export default function App() {
         const form = new FormData();
         form.append("type", "photo");
         form.append("category", slot.label);
-        // Important: Pass filename to FormData
         form.append("file", file, fileName);
         
         const response = await fetch(
@@ -404,11 +418,13 @@ export default function App() {
         );
         
         if (response.ok) {
-            // Refresh file list to show new thumbnail
+            // Fetch fresh list from server to get permanent URLs
             fetchProjectFiles(token, currentProject.id);
         }
     } catch (error) {
         console.error("Grid upload failed", error);
+        // Revert optimistic update on error (optional, but good practice)
+        fetchProjectFiles(token, currentProject.id);
     }
   };
 
@@ -946,6 +962,13 @@ export default function App() {
                       (f) => f.type === 'photo' && (f.fileName || "").toLowerCase().startsWith(slot.key)
                     );
                     
+                    // Add cache busting param if it's a remote URL (not a blob)
+                    const displayUrl = existingFile?.fileUrl?.startsWith("blob:") 
+                      ? existingFile.fileUrl 
+                      : existingFile?.fileUrl 
+                        ? `${existingFile.fileUrl}?t=${new Date(existingFile.updatedAt || existingFile.createdAt).getTime()}`
+                        : null;
+
                     return (
                       <label key={slot.id} className={`photo-slot ${existingFile ? "has-photo" : ""}`}>
                         <input
@@ -957,7 +980,7 @@ export default function App() {
                         />
                         {existingFile ? (
                           <>
-                            <img src={existingFile.fileUrl} alt={slot.label} />
+                            <img src={displayUrl} alt={slot.label} />
                             <div className="slot-overlay">
                               <span className="material-icons-round">photo_camera</span>
                             </div>
