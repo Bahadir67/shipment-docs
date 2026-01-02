@@ -129,7 +129,10 @@ export default function App() {
     if (!token) return;
 
     const controller = new AbortController();
-    const missing = projectFiles.filter(
+    const slotFiles = PHOTO_SLOTS.map((slot) => findSlotFile(slot, projectFiles)).filter(
+      Boolean
+    );
+    const missing = slotFiles.filter(
       (file) =>
         file.type === "photo" &&
         !String(file.id || "").startsWith("temp-") &&
@@ -139,8 +142,7 @@ export default function App() {
     if (!missing.length) return undefined;
 
     const loadPreviews = async () => {
-      const nextPreviews = {};
-      for (const file of missing) {
+      const tasks = missing.map(async (file) => {
         try {
           const response = await fetch(
             `${apiBase}/products/${currentProject.id}/files/${file.id}/view`,
@@ -149,17 +151,31 @@ export default function App() {
               signal: controller.signal
             }
           );
-          if (!response.ok) continue;
+          if (!response.ok) return null;
           const blob = await response.blob();
-          nextPreviews[file.id] = URL.createObjectURL(blob);
+          return { id: file.id, url: URL.createObjectURL(blob) };
         } catch (error) {
           if (error.name !== "AbortError") {
             console.error("Preview load failed", error);
           }
+          return null;
         }
+      });
+      const results = await Promise.allSettled(tasks);
+      const nextPreviews = {};
+      for (const result of results) {
+        if (result.status !== "fulfilled" || !result.value) continue;
+        nextPreviews[result.value.id] = result.value.url;
       }
       if (Object.keys(nextPreviews).length) {
-        setPhotoPreviews((prev) => ({ ...prev, ...nextPreviews }));
+        setPhotoPreviews((prev) => {
+          const next = { ...prev };
+          for (const [id, url] of Object.entries(nextPreviews)) {
+            if (next[id]) URL.revokeObjectURL(next[id]);
+            next[id] = url;
+          }
+          return next;
+        });
       }
     };
 
