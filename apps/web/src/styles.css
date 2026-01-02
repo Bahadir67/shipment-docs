@@ -125,6 +125,20 @@ body {
   color: #f5efe6;
 }
 
+.offline-ready {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  background: rgba(110, 245, 167, 0.12);
+  border: 1px solid rgba(110, 245, 167, 0.3);
+  color: #e8fff0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .offline-banner span {
   font-size: 13px;
   font-weight: 600;

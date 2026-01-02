@@ -53,6 +53,9 @@ export default function App() {
   const [pendingUploads, setPendingUploads] = useState(0);
   const [editingProjectId, setEditingProjectId] = useState(null);
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [offlineReady, setOfflineReady] = useState(
+    localStorage.getItem("shipment_docs_offline_ready") === "true"
+  );
   const [editForm, setEditForm] = useState({
     serial: "",
     customer: "",
@@ -858,6 +861,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const handleOfflineReady = () => setOfflineReady(true);
+    window.addEventListener("pwa-offline-ready", handleOfflineReady);
+    return () => {
+      window.removeEventListener("pwa-offline-ready", handleOfflineReady);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!currentProject) return;
     const notes = loadNotes();
     setNoteText(notes[currentProject.id] || "");
@@ -935,6 +946,11 @@ export default function App() {
         {!isOnline ? (
           <div className="offline-banner">
             <span>Offline moddasiniz. Kayitlar cihazda tutulur.</span>
+          </div>
+        ) : null}
+        {isOnline && offlineReady ? (
+          <div className="offline-ready">
+            <span>Offline hazir. Artik baglanti olmadan acabilirsiniz.</span>
           </div>
         ) : null}
         {installPrompt ? (
