@@ -2,10 +2,23 @@ const fs = require("fs");
 const { Readable } = require("stream");
 const { google } = require("googleapis");
 
-function loadJson(pathValue) {
-  if (!pathValue) return null;
-  const raw = fs.readFileSync(pathValue, "utf8");
-  return JSON.parse(raw);
+function loadJson(pathOrContent) {
+  if (!pathOrContent) return null;
+  // If it starts with '{', assume it is raw JSON content (Env Var)
+  if (pathOrContent.trim().startsWith("{")) {
+    try {
+      return JSON.parse(pathOrContent);
+    } catch (e) {
+      console.error("Failed to parse JSON from env var:", e.message);
+      return null;
+    }
+  }
+  // Otherwise, treat it as a file path
+  if (fs.existsSync(pathOrContent)) {
+    const raw = fs.readFileSync(pathOrContent, "utf8");
+    return JSON.parse(raw);
+  }
+  return null;
 }
 
 function getOAuthClient() {
