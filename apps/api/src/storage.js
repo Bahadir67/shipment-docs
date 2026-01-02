@@ -61,7 +61,12 @@ function resolveTargetFolder({ basePath, type, category }) {
 function saveBufferToFile({ basePath, type, category, originalName, buffer }) {
   const folder = resolveTargetFolder({ basePath, type, category });
   ensureDir(folder);
-  const safeName = `${Date.now()}_${sanitizeSegment(originalName)}`;
+  
+  const stdNames = ["onden", "sagdan", "soldan", "arkadan", "etiket", "genel"];
+  const namePart = sanitizeSegment(originalName);
+  const isStdPhoto = stdNames.some(std => namePart.toLowerCase().startsWith(std));
+
+  const safeName = isStdPhoto ? namePart : `${Date.now()}_${namePart}`;
   const fullPath = path.join(folder, safeName);
   fs.writeFileSync(fullPath, buffer);
   return { fullPath, fileName: safeName };

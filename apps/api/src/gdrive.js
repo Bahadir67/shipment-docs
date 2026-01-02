@@ -121,9 +121,35 @@ async function uploadGDriveFile({
   } else {
     targetParent = await ensureFolder(drive, resolveFolderName(type, category), productFolderId);
   }
+
+  const finalName = sanitizeName(originalName);
+
+  // Check for existing file with same name to overwrite (delete then upload)
+  const query = [
+    `'${targetParent}' in parents`,
+    `name='${finalName}'`,
+    "trashed=false"
+  ].join(" and ");
+
+  try {
+    const existingList = await drive.files.list({
+      q: query,
+      fields: "files(id,name)"
+    });
+
+    if (existingList.data.files && existingList.data.files.length > 0) {
+      // Delete existing file(s) with same name
+      for (const file of existingList.data.files) {
+         await drive.files.delete({ fileId: file.id });
+      }
+    }
+  } catch (e) {
+    console.warn("Error checking/deleting existing file:", e.message);
+  }
+
   const response = await drive.files.create({
     requestBody: {
-      name: sanitizeName(originalName),
+      name: finalName,
       parents: [targetParent]
     },
     media: {
