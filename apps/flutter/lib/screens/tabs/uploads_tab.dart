@@ -110,6 +110,48 @@ class _UploadsTabState extends State<UploadsTab> {
     setState(() => _loading = false);
   }
 
+  Future<void> _pickDocument() async {
+    final appState = AppScope.of(context);
+    final project = appState.currentProject;
+    if (project == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Once proje secin."))
+      );
+      return;
+    }
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Web icin dosya kaydi MVP disi."))
+      );
+      return;
+    }
+    final picked = await _picker.pickMedia();
+    if (picked == null) return;
+    final projectDir = await _resolveProjectDir(project.id);
+    final fileName = p.basename(picked.path);
+    final targetPath = p.join(projectDir, fileName);
+    await File(picked.path).copy(targetPath);
+    final fileItem = FileItem(
+      projectId: project.id,
+      projectServerId: project.serverId,
+      type: "doc",
+      category: null,
+      fileName: fileName,
+      localPath: targetPath
+    );
+    final localFileId = await appState.fileRepository.save(fileItem);
+    await appState.syncEngine.enqueue(
+      type: "file_upload",
+      payload: {
+        "localFileId": localFileId,
+        "localProjectId": project.id
+      }
+    );
+    if (appState.isOnline) {
+      await appState.syncEngine.syncAll(token: appState.user?.token);
+    }
+  }
+
   FileItem? _matchSlot(List<FileItem> items, Map<String, String> slot) {
     final key = slot["key"]!;
     final label = slot["label"]!.toLowerCase();
@@ -150,6 +192,10 @@ class _UploadsTabState extends State<UploadsTab> {
                           source: ImageSource.camera
                         ),
                 icon: const Icon(Icons.photo_camera)
+              ),
+              IconButton(
+                onPressed: _loading ? null : _pickDocument,
+                icon: const Icon(Icons.attach_file)
               )
             ],
           ),
