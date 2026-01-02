@@ -1,6 +1,4 @@
 import "package:flutter/material.dart";
-import "package:uuid/uuid.dart";
-
 import "../../data/models/project.dart";
 import "../../state/app_scope.dart";
 
@@ -47,11 +45,12 @@ class _NewProjectTabState extends State<NewProjectTab> {
       year: int.parse(_yearController.text.trim()),
       status: "open"
     );
-    await appState.projectRepository.save(project);
+    final localProjectId = await appState.projectRepository.save(project);
+    appState.setCurrentProject(project);
     await appState.syncEngine.enqueue(
       type: "project_create",
       payload: {
-        "localId": const Uuid().v4(),
+        "localProjectId": localProjectId,
         "serial": project.serial,
         "customer": project.customer,
         "project": project.project,

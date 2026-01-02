@@ -16,9 +16,24 @@ class ProjectRepository {
     return isar.projects.where().sortByCreatedAtDesc().limit(limit).findAll();
   }
 
-  Future<void> save(Project project) async {
+  Future<int> save(Project project) async {
+    return isar.writeTxn(() async {
+      return isar.projects.put(project);
+    });
+  }
+
+  Future<Project?> getById(int id) async {
+    return isar.projects.get(id);
+  }
+
+  Future<void> updateServerId({required int id, required String serverId}) async {
     await isar.writeTxn(() async {
-      await isar.projects.put(project);
+      final item = await isar.projects.get(id);
+      if (item == null) return;
+      item.serverId = serverId;
+      item.syncStatus = SyncStatus.synced;
+      item.updatedAt = DateTime.now();
+      await isar.projects.put(item);
     });
   }
 

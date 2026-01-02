@@ -60,7 +60,13 @@ class _ProjectsTabState extends State<ProjectsTab> {
                   return ListTile(
                     title: Text(item.project),
                     subtitle: Text("${item.serial} • ${item.customer}"),
-                    trailing: Text(item.status)
+                    trailing: Text(item.status),
+                    onTap: () {
+                      appState.setCurrentProject(item);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Proje secildi."))
+                      );
+                    }
                   );
                 },
                 separatorBuilder: (_, __) => const Divider(),
