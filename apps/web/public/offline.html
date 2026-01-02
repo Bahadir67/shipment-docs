@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shipment Docs - Offline</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #0f1a1c;
+        --card: #182529;
+        --text: #f2f5f5;
+        --muted: #b7c7c9;
+        --accent: #6bd39c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "DM Sans", system-ui, sans-serif;
+        background: radial-gradient(circle at top, #1c2f33, #0f1a1c);
+        color: var(--text);
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+      .card {
+        max-width: 520px;
+        width: 100%;
+        background: var(--card);
+        border-radius: 20px;
+        padding: 28px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 28px;
+      }
+      p {
+        margin: 0 0 16px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .hint {
+        font-size: 14px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(107, 211, 156, 0.12);
+        color: var(--accent);
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <span class="badge">Offline</span>
+      <h1>Baglanti yok</h1>
+      <p>
+        Shipment Docs offline modda. Daha once uygulamayi online acmadiysaniz,
+        bu ekran gorunebilir. Baglanti gelince uygulamayi yenileyin.
+      </p>
+      <p class="hint">
+        Not: Uygulama en az bir kez online acildiginda offline calisma icin
+        gerekli dosyalar cihaza kaydedilir.
+      </p>
+    </div>
+  </body>
+</html>
