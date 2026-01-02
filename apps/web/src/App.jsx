@@ -20,6 +20,11 @@ const PHOTO_SLOTS = [
   { id: "general", label: "Genel", key: "genel" }
 ];
 
+const isRemoteUrl = (value) => {
+  if (!value) return false;
+  return /^https?:\/\//i.test(value);
+};
+
 export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [username, setUsername] = useState("");
@@ -38,6 +43,7 @@ export default function App() {
   const [currentProject, setCurrentProject] = useState(null);
   const [checklist, setChecklist] = useState([]);
   const [projectFiles, setProjectFiles] = useState([]);
+  const [photoPreviews, setPhotoPreviews] = useState({});
   const [uploadForm, setUploadForm] = useState({
     type: "test_report", // Default to document type
     category: "Drawings",
@@ -96,6 +102,56 @@ export default function App() {
       console.error("Files fetch failed");
     }
   };
+
+  useEffect(() => {
+    Object.values(photoPreviews).forEach((url) => URL.revokeObjectURL(url));
+    setPhotoPreviews({});
+  }, [currentProject?.id]);
+
+  useEffect(() => {
+    if (!currentProject) return;
+    const token = localStorage.getItem(tokenKey);
+    if (!token) return;
+
+    const controller = new AbortController();
+    const missing = projectFiles.filter(
+      (file) =>
+        file.type === "photo" &&
+        !photoPreviews[file.id] &&
+        !isRemoteUrl(file.fileUrl)
+    );
+
+    if (!missing.length) return undefined;
+
+    const loadPreviews = async () => {
+      const nextPreviews = {};
+      for (const file of missing) {
+        try {
+          const response = await fetch(
+            `${apiBase}/products/${currentProject.id}/files/${file.id}/view`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: controller.signal
+            }
+          );
+          if (!response.ok) continue;
+          const blob = await response.blob();
+          nextPreviews[file.id] = URL.createObjectURL(blob);
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            console.error("Preview load failed", error);
+          }
+        }
+      }
+      if (Object.keys(nextPreviews).length) {
+        setPhotoPreviews((prev) => ({ ...prev, ...nextPreviews }));
+      }
+    };
+
+    loadPreviews();
+
+    return () => controller.abort();
+  }, [projectFiles, currentProject?.id, photoPreviews, apiBase]);
 
   const toggleChecklistItem = async (item) => {
     const token = localStorage.getItem(tokenKey);
@@ -971,12 +1027,18 @@ export default function App() {
                       }
                     );
                     
-                    // Add cache busting param if it's a remote URL (not a blob)
-                    const displayUrl = existingFile?.fileUrl?.startsWith("blob:") 
-                      ? existingFile.fileUrl 
-                      : existingFile?.fileUrl 
-                        ? `${existingFile.fileUrl}?t=${new Date(existingFile.updatedAt || existingFile.createdAt).getTime()}`
+                    // Use blob preview when available; otherwise prefer remote URLs or loaded previews
+                    const cacheKey = existingFile?.updatedAt || existingFile?.createdAt;
+                    const cacheStamp = cacheKey ? new Date(cacheKey).getTime() : Date.now();
+                    const cacheSuffix = existingFile?.fileUrl?.includes("?") ? "&" : "?";
+                    const remoteUrl =
+                      existingFile?.fileUrl && isRemoteUrl(existingFile.fileUrl)
+                        ? `${existingFile.fileUrl}${cacheSuffix}t=${cacheStamp}`
                         : null;
+                    const displayUrl = existingFile?.fileUrl?.startsWith("blob:")
+                      ? existingFile.fileUrl
+                      : photoPreviews[existingFile?.id] || remoteUrl;
+                    const isLoadingPreview = !!existingFile && !displayUrl;
 
                     return (
                       <label key={slot.id} className={`photo-slot ${existingFile ? "has-photo" : ""}`}>
@@ -987,7 +1049,7 @@ export default function App() {
                            capture="environment"
                            onChange={(e) => handleGridFileSelect(slot, e)}
                         />
-                        {existingFile ? (
+                        {existingFile && displayUrl ? (
                           <>
                             <img src={displayUrl} alt={slot.label} />
                             <div className="slot-overlay">
@@ -997,7 +1059,9 @@ export default function App() {
                         ) : (
                           <div className="slot-content">
                             <span className="slot-icon">photo_camera</span>
-                            <span className="slot-label">{slot.label}</span>
+                            <span className="slot-label">
+                              {isLoadingPreview ? "Yukleniyor..." : slot.label}
+                            </span>
                           </div>
                         )}
                       </label>
