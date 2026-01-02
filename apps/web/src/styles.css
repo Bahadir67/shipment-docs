@@ -241,6 +241,12 @@ textarea {
   background: #fff;
   font-family: inherit;
   max-width: 100%;
+  width: 100%;
+}
+
+input[type="file"] {
+  padding: 8px;
+  font-size: 13px;
 }
 
 textarea {
@@ -381,12 +387,13 @@ button.danger {
 }
 
 .upload-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   align-items: end;
 }
 
 .upload-grid > * {
   min-width: 0;
+  overflow: hidden;
 }
 
 .note-panel {
