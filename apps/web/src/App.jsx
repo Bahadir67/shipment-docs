@@ -120,6 +120,7 @@ export default function App() {
     const missing = projectFiles.filter(
       (file) =>
         file.type === "photo" &&
+        !String(file.id || "").startsWith("temp-") &&
         !photoPreviews[file.id] &&
         !isRemoteUrl(file.fileUrl)
     );
