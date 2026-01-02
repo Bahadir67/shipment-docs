@@ -7,6 +7,7 @@ import "package:isar/isar.dart";
 import "../data/local/user_repository.dart";
 import "../data/models/user_profile.dart";
 import "../data/remote/auth_api.dart";
+import "../data/sync/sync_engine.dart";
 
 class AppState extends ChangeNotifier {
   AppState({
@@ -14,11 +15,13 @@ class AppState extends ChangeNotifier {
     required this.authApi
   }) {
     userRepository = UserRepository(isar);
+    syncEngine = SyncEngine(isar: isar);
   }
 
   final Isar isar;
   final AuthApi authApi;
   late final UserRepository userRepository;
+  late final SyncEngine syncEngine;
   StreamSubscription<ConnectivityResult>? _connectivitySub;
 
   bool isOnline = true;
@@ -34,6 +37,9 @@ class AppState extends ChangeNotifier {
       final nextOnline = result != ConnectivityResult.none;
       if (nextOnline != isOnline) {
         isOnline = nextOnline;
+        if (isOnline) {
+          syncEngine.syncAll(token: user?.token);
+        }
         notifyListeners();
       }
     });
@@ -58,6 +64,7 @@ class AppState extends ChangeNotifier {
     );
     await userRepository.save(profile);
     user = profile;
+    await syncEngine.syncAll(token: profile.token);
     notifyListeners();
     return true;
   }
