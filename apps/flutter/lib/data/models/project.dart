@@ -15,8 +15,9 @@ class Project {
   String? productType;
   int year;
   String status;
-  DateTime createdAt;
-  DateTime updatedAt;
+  DateTime createdAt = DateTime.now();
+  DateTime updatedAt = DateTime.now();
+  @enumerated
   SyncStatus syncStatus;
 
   Project({
@@ -27,9 +28,6 @@ class Project {
     this.productType,
     required this.year,
     this.status = "open",
-    DateTime? createdAt,
-    DateTime? updatedAt,
     this.syncStatus = SyncStatus.pending
-  })  : createdAt = createdAt ?? DateTime.now(),
-        updatedAt = updatedAt ?? DateTime.now();
+  });
 }

@@ -14,7 +14,8 @@ class ChecklistItem {
   String itemKey;
   String category;
   bool completed;
-  DateTime updatedAt;
+  DateTime updatedAt = DateTime.now();
+  @enumerated
   SyncStatus syncStatus;
 
   ChecklistItem({
@@ -24,7 +25,6 @@ class ChecklistItem {
     required this.itemKey,
     required this.category,
     this.completed = false,
-    DateTime? updatedAt,
     this.syncStatus = SyncStatus.pending
-  }) : updatedAt = updatedAt ?? DateTime.now();
+  });
 }

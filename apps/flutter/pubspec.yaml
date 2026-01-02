@@ -43,6 +43,7 @@ dependencies:
   uuid: ^4.5.0
 
 dev_dependencies:
+  analyzer: ^5.13.0
   flutter_test:
     sdk: flutter
   isar_generator: ^3.1.0+1

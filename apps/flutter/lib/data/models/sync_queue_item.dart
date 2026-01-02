@@ -8,13 +8,12 @@ class SyncQueueItem {
 
   String type;
   String payload;
-  DateTime createdAt;
+  DateTime createdAt = DateTime.now();
   int retryCount;
 
   SyncQueueItem({
     required this.type,
     required this.payload,
-    DateTime? createdAt,
     this.retryCount = 0
-  }) : createdAt = createdAt ?? DateTime.now();
+  });
 }
