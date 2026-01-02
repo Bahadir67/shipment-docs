@@ -69,6 +69,7 @@ export default function App() {
   const tokenKey = "shipment_docs_token";
   const pendingProductsKey = "shipment_docs_pending_products";
   const notesKey = "shipment_docs_notes";
+  const currentProjectKey = "shipment_docs_current_project";
 
   const isAdmin = user?.role === "admin";
   const findSlotFile = (slot, files) =>
@@ -176,10 +177,7 @@ export default function App() {
       for (const slot of PHOTO_SLOTS) {
         const previewUrl = next[slot.key];
         if (!previewUrl) continue;
-        const existingFile = projectFiles.find((file) => {
-          const name = (file.fileName || "").toLowerCase();
-          return name.includes(slot.key);
-        });
+        const existingFile = findSlotFile(slot, projectFiles);
         if (!existingFile) continue;
         const hasRemote = isRemoteUrl(existingFile.fileUrl);
         const hasPreview = !!photoPreviews[existingFile.id];
@@ -311,7 +309,13 @@ export default function App() {
       if (!response.ok) return;
       const payload = await response.json();
       const pending = loadPendingProducts();
-      setProducts([...(pending || []), ...(payload.data || [])]);
+      const combined = [...(pending || []), ...(payload.data || [])];
+      setProducts(combined);
+      if (!currentProject) {
+        const storedId = localStorage.getItem(currentProjectKey);
+        const stored = combined.find((item) => item.id === storedId);
+        if (stored) setCurrentProject(stored);
+      }
     } catch (error) {
       setProducts([]);
     }
@@ -671,7 +675,9 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem(tokenKey);
+    localStorage.removeItem(currentProjectKey);
     setUser(null);
+    setCurrentProject(null);
     setStatus({ type: "", message: "" });
   };
 
@@ -755,6 +761,20 @@ export default function App() {
     setNoteText(notes[currentProject.id] || "");
     setNoteStatus({ type: "", message: "" });
   }, [currentProject]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(tokenKey);
+    if (!currentProject) {
+      setChecklist([]);
+      setProjectFiles([]);
+      localStorage.removeItem(currentProjectKey);
+      return;
+    }
+    localStorage.setItem(currentProjectKey, currentProject.id);
+    if (!token) return;
+    fetchChecklist(token, currentProject.id);
+    fetchProjectFiles(token, currentProject.id);
+  }, [currentProject?.id]);
 
   const selectableProducts = useMemo(
     () => products.filter((item) => !String(item.id || "").startsWith("temp-")),
