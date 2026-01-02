@@ -85,7 +85,12 @@ export default function App() {
       });
       if (response.ok) {
         const payload = await response.json();
-        setProjectFiles(payload.data || []);
+        // Normalize fileId to fileName for frontend consistency
+        const normalized = (payload.data || []).map(f => ({
+          ...f,
+          fileName: f.fileName || f.fileId // Fallback to fileId if fileName missing
+        }));
+        setProjectFiles(normalized);
       }
     } catch (error) {
       console.error("Files fetch failed");
