@@ -133,8 +133,7 @@ export default function App() {
       (file) =>
         file.type === "photo" &&
         !String(file.id || "").startsWith("temp-") &&
-        !photoPreviews[file.id] &&
-        !isRemoteUrl(file.fileUrl)
+        !photoPreviews[file.id]
     );
 
     if (!missing.length) return undefined;

@@ -456,7 +456,12 @@ app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
       return getFileStream(file.fileUrl).pipe(res);
     }
     if (storage.mode === "gdrive" && file.fileUrl) {
-      return res.redirect(file.fileUrl);
+      const download = await downloadGDriveFile({ fileId: file.fileId });
+      res.setHeader(
+        "Content-Type",
+        download.mimeType || mime.lookup(file.fileUrl) || "application/octet-stream"
+      );
+      return download.stream.pipe(res);
     }
   } catch (error) {
     console.error("View log failed", error.message);
