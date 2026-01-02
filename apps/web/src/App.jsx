@@ -52,6 +52,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
   const [pendingUploads, setPendingUploads] = useState(0);
   const [editingProjectId, setEditingProjectId] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(null);
   const [editForm, setEditForm] = useState({
     serial: "",
     customer: "",
@@ -726,6 +727,16 @@ export default function App() {
     }
   };
 
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    try {
+      await installPrompt.prompt();
+      await installPrompt.userChoice;
+    } finally {
+      setInstallPrompt(null);
+    }
+  };
+
   useEffect(() => {
     const stored = localStorage.getItem(tokenKey);
     if (stored) {
@@ -745,6 +756,20 @@ export default function App() {
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    const handleInstalled = () => setInstallPrompt(null);
+    window.addEventListener("beforeinstallprompt", handleInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
     };
   }, []);
 
@@ -823,6 +848,22 @@ export default function App() {
       </aside>
 
       <main className="main">
+        {!isOnline ? (
+          <div className="offline-banner">
+            <span>Offline moddasiniz. Kayitlar cihazda tutulur.</span>
+          </div>
+        ) : null}
+        {installPrompt ? (
+          <div className="install-banner">
+            <div>
+              <strong>Uygulamayi yukleyin</strong>
+              <span>Offline erisim icin ana ekrana ekleyin.</span>
+            </div>
+            <button type="button" onClick={handleInstallClick}>
+              Yukle
+            </button>
+          </div>
+        ) : null}
         <header className="topbar">
           <div>
             <h1>{menuItems.find((item) => item.id === activePage)?.label}</h1>
