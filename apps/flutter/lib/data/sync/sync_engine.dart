@@ -6,6 +6,7 @@ import "package:isar/isar.dart";
 import "../local/sync_queue_repository.dart";
 import "../local/project_repository.dart";
 import "../local/file_repository.dart";
+import "../local/checklist_repository.dart";
 import "../models/sync_queue_item.dart";
 import "../remote/api_client.dart";
 import "../models/project.dart";
@@ -20,6 +21,7 @@ class SyncEngine {
     final queueRepository = SyncQueueRepository(isar);
     final projectRepository = ProjectRepository(isar);
     final fileRepository = FileRepository(isar);
+    final checklistRepository = ChecklistRepository(isar);
     final items = await queueRepository.getAll();
     if (items.isEmpty) return;
 
@@ -29,7 +31,8 @@ class SyncEngine {
         client,
         item,
         projectRepository: projectRepository,
-        fileRepository: fileRepository
+        fileRepository: fileRepository,
+        checklistRepository: checklistRepository
       );
       if (ok) {
         await queueRepository.remove(item.id);
@@ -57,7 +60,8 @@ class SyncEngine {
     ApiClient client,
     SyncQueueItem item, {
     required ProjectRepository projectRepository,
-    required FileRepository fileRepository
+    required FileRepository fileRepository,
+    required ChecklistRepository checklistRepository
   }) async {
     try {
       final data = jsonDecode(item.payload) as Map<String, dynamic>;
@@ -72,10 +76,19 @@ class SyncEngine {
           }
           return true;
         case "checklist_update":
-          final productId = data["productId"] as String;
+          final localProjectId = data["localProjectId"] as int?;
+          final project = localProjectId == null
+              ? null
+              : await projectRepository.getById(localProjectId);
+          final projectServerId = project?.serverId;
+          if (projectServerId == null) return false;
           await client.dio.post(
-            "/products/$productId/checklist",
-            data: data["payload"]
+            "/products/$projectServerId/checklist",
+            data: {
+              "itemKey": data["itemKey"],
+              "category": data["category"],
+              "completed": data["completed"]
+            }
           );
           return true;
         case "file_upload":

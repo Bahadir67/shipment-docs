@@ -7,10 +7,12 @@ import "package:isar/isar.dart";
 import "../data/local/user_repository.dart";
 import "../data/local/project_repository.dart";
 import "../data/local/file_repository.dart";
+import "../data/local/checklist_repository.dart";
 import "../data/models/user_profile.dart";
 import "../data/models/project.dart";
 import "../data/remote/auth_api.dart";
 import "../data/remote/projects_api.dart";
+import "../data/remote/checklist_api.dart";
 import "../data/sync/sync_engine.dart";
 
 class AppState extends ChangeNotifier {
@@ -21,6 +23,7 @@ class AppState extends ChangeNotifier {
     userRepository = UserRepository(isar);
     projectRepository = ProjectRepository(isar);
     fileRepository = FileRepository(isar);
+    checklistRepository = ChecklistRepository(isar);
     syncEngine = SyncEngine(isar: isar);
   }
 
@@ -28,6 +31,7 @@ class AppState extends ChangeNotifier {
   final AuthApi authApi;
   late final ProjectRepository projectRepository;
   late final FileRepository fileRepository;
+  late final ChecklistRepository checklistRepository;
   late final UserRepository userRepository;
   late final SyncEngine syncEngine;
   StreamSubscription<ConnectivityResult>? _connectivitySub;
@@ -41,6 +45,9 @@ class AppState extends ChangeNotifier {
 
   void setCurrentProject(Project? project) {
     currentProject = project;
+    if (project != null && isOnline) {
+      refreshChecklist(project);
+    }
     notifyListeners();
   }
 
@@ -108,6 +115,23 @@ class AppState extends ChangeNotifier {
       return project;
     }).toList();
     await projectRepository.upsertRemote(recent);
+  }
+
+  Future<void> refreshChecklist(Project project) async {
+    if (!isOnline || user?.token == null || project.serverId == null) return;
+    final api = ChecklistApi(client: ApiClient(token: user!.token));
+    final data = await api.listItems(project.serverId!);
+    final items = data.map((entry) {
+      return ChecklistItem(
+        serverId: entry["id"] as String?,
+        projectId: project.id,
+        projectServerId: project.serverId,
+        itemKey: entry["itemKey"] as String,
+        category: entry["category"] as String,
+        completed: entry["completed"] as bool? ?? false
+      );
+    }).toList();
+    await checklistRepository.upsertRemote(projectId: project.id, items: items);
   }
 
   Future<void> logout() async {

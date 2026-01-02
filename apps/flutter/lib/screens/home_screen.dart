@@ -5,6 +5,7 @@ import "tabs/dashboard_tab.dart";
 import "tabs/projects_tab.dart";
 import "tabs/new_project_tab.dart";
 import "tabs/uploads_tab.dart";
+import "tabs/checklist_tab.dart";
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -20,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
     "Genel Bakis",
     "Projeler",
     "Yeni Proje",
+    "Checklist",
     "Yuklemeler"
   ];
 
@@ -27,6 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
     DashboardTab(),
     ProjectsTab(),
     NewProjectTab(),
+    ChecklistTab(),
     UploadsTab()
   ];
 
@@ -62,6 +65,10 @@ class _HomeScreenState extends State<HomeScreen> {
           NavigationDestination(
             icon: Icon(Icons.add_box_outlined),
             label: "Yeni"
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.checklist),
+            label: "Liste"
           ),
           NavigationDestination(
             icon: Icon(Icons.cloud_upload_outlined),
