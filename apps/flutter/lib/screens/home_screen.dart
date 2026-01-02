@@ -37,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final appState = AppScope.of(context);
     final onlineLabel = appState.isOnline ? "Cevrimici" : "Cevrimdisi";
+    final projectLabel =
+        appState.currentProject != null ? appState.currentProject!.project : "-";
     return Scaffold(
       appBar: AppBar(
         title: Text(_tabs[_index]),
@@ -44,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Center(
             child: Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: Text(onlineLabel)
+              child: Text("$onlineLabel • $projectLabel")
             )
           )
         ]

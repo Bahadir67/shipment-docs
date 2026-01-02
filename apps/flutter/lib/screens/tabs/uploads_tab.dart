@@ -272,7 +272,16 @@ class _UploadsTabState extends State<UploadsTab> {
                           dense: true,
                           title: Text(item.fileName),
                           subtitle: Text(item.type),
-                          trailing: Text(item.syncStatus.name)
+                          trailing: Text(
+                            item.syncStatus.name,
+                            style: TextStyle(
+                              color: item.syncStatus.name == "synced"
+                                  ? Colors.green
+                                  : item.syncStatus.name == "error"
+                                      ? Colors.red
+                                      : Colors.orange
+                            )
+                          )
                         ))
                 ],
               );
