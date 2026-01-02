@@ -1058,7 +1058,12 @@ export default function App() {
                     const existingFile = projectFiles.find(
                       (f) => {
                         const name = (f.fileName || "").toLowerCase();
-                        return name.includes(slot.key);
+                        const category = (f.category || "").toLowerCase();
+                        return (
+                          name.includes(slot.key) ||
+                          category === slot.label.toLowerCase() ||
+                          category.includes(slot.key)
+                        );
                       }
                     );
                     
