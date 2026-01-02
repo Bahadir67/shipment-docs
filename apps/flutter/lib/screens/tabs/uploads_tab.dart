@@ -21,6 +21,15 @@ class _UploadsTabState extends State<UploadsTab> {
   final _picker = ImagePicker();
   bool _loading = false;
 
+  static const _photoSlots = [
+    {"key": "onden", "label": "Onden"},
+    {"key": "sagdan", "label": "Sagdan"},
+    {"key": "soldan", "label": "Soldan"},
+    {"key": "arkadan", "label": "Arkadan"},
+    {"key": "etiket", "label": "Etiket"},
+    {"key": "genel", "label": "Genel"}
+  ];
+
   Future<String> _resolveProjectDir(int projectId) async {
     if (kIsWeb) return "";
     final base = await getApplicationSupportDirectory();
@@ -42,7 +51,10 @@ class _UploadsTabState extends State<UploadsTab> {
     return result?.path;
   }
 
-  Future<void> _pickImage({required bool fromCamera}) async {
+  Future<void> _captureForSlot({
+    required Map<String, String> slot,
+    required ImageSource source
+  }) async {
     final appState = AppScope.of(context);
     final project = appState.currentProject;
     if (project == null) {
@@ -53,7 +65,7 @@ class _UploadsTabState extends State<UploadsTab> {
     }
     setState(() => _loading = true);
     final picked = await _picker.pickImage(
-      source: fromCamera ? ImageSource.camera : ImageSource.gallery,
+      source: source,
       imageQuality: 85
     );
     if (picked == null) {
@@ -68,17 +80,18 @@ class _UploadsTabState extends State<UploadsTab> {
       return;
     }
     final projectDir = await _resolveProjectDir(project.id);
-    final fileName = p.basename(picked.path);
+    final ext = p.extension(picked.path).isEmpty ? ".jpg" : p.extension(picked.path);
+    final fileName = "${slot["key"]}$ext";
     final targetPath = p.join(projectDir, fileName);
     await File(picked.path).copy(targetPath);
-    final thumbPath = p.join(projectDir, "thumb_$fileName");
+    final thumbPath = p.join(projectDir, "thumb_${slot["key"]}.jpg");
     final thumb = await _createThumbnail(targetPath, thumbPath);
 
     final fileItem = FileItem(
       projectId: project.id,
       projectServerId: project.serverId,
       type: "photo",
-      category: "Onden",
+      category: slot["label"],
       fileName: fileName,
       localPath: targetPath,
       thumbnailPath: thumb
@@ -97,10 +110,26 @@ class _UploadsTabState extends State<UploadsTab> {
     setState(() => _loading = false);
   }
 
+  FileItem? _matchSlot(List<FileItem> items, Map<String, String> slot) {
+    final key = slot["key"]!;
+    final label = slot["label"]!.toLowerCase();
+    for (final item in items) {
+      final name = item.fileName.toLowerCase();
+      final category = (item.category ?? "").toLowerCase();
+      if (name.contains(key) || category == label) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final appState = AppScope.of(context);
     final project = appState.currentProject;
+    if (project == null) {
+      return const Center(child: Text("Once proje secin."));
+    }
     return Column(
       children: [
         Padding(
@@ -109,48 +138,100 @@ class _UploadsTabState extends State<UploadsTab> {
             children: [
               Expanded(
                 child: Text(
-                  project == null
-                      ? "Proje secili degil"
-                      : "Proje: ${project.project}",
+                  "Proje: ${project.project}",
                   style: const TextStyle(fontWeight: FontWeight.w600)
                 )
               ),
               IconButton(
-                onPressed: _loading ? null : () => _pickImage(fromCamera: true),
+                onPressed: _loading
+                    ? null
+                    : () => _captureForSlot(
+                          slot: _photoSlots.first,
+                          source: ImageSource.camera
+                        ),
                 icon: const Icon(Icons.photo_camera)
-              ),
-              IconButton(
-                onPressed: _loading ? null : () => _pickImage(fromCamera: false),
-                icon: const Icon(Icons.photo_library)
               )
             ],
           ),
         ),
         Expanded(
-          child: project == null
-              ? const Center(child: Text("Once proje secin."))
-              : FutureBuilder(
-                  future: appState.fileRepository.listByProject(project.id),
-                  builder: (context, snapshot) {
-                    final items = snapshot.data ?? [];
-                    if (items.isEmpty) {
-                      return const Center(child: Text("Dosya yok."));
+          child: FutureBuilder(
+            future: appState.fileRepository.listByProject(project.id),
+            builder: (context, snapshot) {
+              final items = snapshot.data ?? [];
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12
+                    ),
+                    itemCount: _photoSlots.length,
+                    itemBuilder: (context, index) {
+                      final slot = _photoSlots[index];
+                      final file = _matchSlot(items, slot);
+                      final imagePath = file?.thumbnailPath ?? file?.localPath;
+                      return GestureDetector(
+                        onTap: _loading
+                            ? null
+                            : () => _captureForSlot(
+                                  slot: slot,
+                                  source: ImageSource.camera
+                                ),
+                        onLongPress: _loading
+                            ? null
+                            : () => _captureForSlot(
+                                  slot: slot,
+                                  source: ImageSource.gallery
+                                ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.black12)
+                          ),
+                          child: imagePath != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.file(
+                                    File(imagePath),
+                                    fit: BoxFit.cover
+                                  )
+                                )
+                              : Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.photo_camera_outlined),
+                                    const SizedBox(height: 8),
+                                    Text(slot["label"]!)
+                                  ]
+                                ),
+                        ),
+                      );
                     }
-                    return ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-                        return ListTile(
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Dosyalar",
+                    style: TextStyle(fontWeight: FontWeight.w600)
+                  ),
+                  const SizedBox(height: 8),
+                  if (items.isEmpty)
+                    const Text("Dosya yok.")
+                  else
+                    ...items.map((item) => ListTile(
+                          dense: true,
                           title: Text(item.fileName),
                           subtitle: Text(item.type),
                           trailing: Text(item.syncStatus.name)
-                        );
-                      },
-                      separatorBuilder: (_, __) => const Divider(),
-                      itemCount: items.length
-                    );
-                  }
-                )
+                        ))
+                ],
+              );
+            }
+          ),
         )
       ],
     );
