@@ -16,6 +16,7 @@ model User {
   passwordSalt String
   createdAt    DateTime @default(now())
   viewLogs     ViewLog[]
+  sessions     Session[]
 }
 
 model Product {
@@ -63,5 +64,13 @@ model ViewLog {
   fileId    String?
   action    String
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Session {
+  token     String   @id
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
   user      User     @relation(fields: [userId], references: [id])
 }

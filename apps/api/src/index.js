@@ -32,7 +32,7 @@ app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "10mb" }));
 const upload = multer({ storage: multer.memoryStorage() });
 
-const sessions = new Map();
+const sessionTtlDays = Number(process.env.SESSION_TTL_DAYS || "30");
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString("hex")) {
   const hash = crypto.pbkdf2Sync(password, salt, 100000, 64, "sha512").toString("hex");
@@ -44,9 +44,21 @@ function verifyPassword(user, password) {
   return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(user.passwordHash, "hex"));
 }
 
-function createSession(userId) {
+function getSessionExpiry() {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + sessionTtlDays);
+  return expiresAt;
+}
+
+async function createSession(userId) {
   const token = crypto.randomBytes(24).toString("hex");
-  sessions.set(token, userId);
+  await prisma.session.create({
+    data: {
+      token,
+      userId,
+      expiresAt: getSessionExpiry()
+    }
+  });
   return token;
 }
 
@@ -54,12 +66,18 @@ async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: "missing_token" });
-  const userId = sessions.get(token);
-  if (!userId) return res.status(401).json({ error: "invalid_token" });
   try {
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) return res.status(401).json({ error: "invalid_user" });
-    req.user = user;
+    const session = await prisma.session.findUnique({
+      where: { token },
+      include: { user: true }
+    });
+    if (!session) return res.status(401).json({ error: "invalid_token" });
+    if (session.expiresAt && session.expiresAt < new Date()) {
+      await prisma.session.delete({ where: { token } }).catch(() => {});
+      return res.status(401).json({ error: "token_expired" });
+    }
+    if (!session.user) return res.status(401).json({ error: "invalid_user" });
+    req.user = session.user;
     return next();
   } catch (error) {
     console.error("Auth lookup failed", error.message);
@@ -90,7 +108,7 @@ app.post("/auth/login", async (req, res) => {
     if (!user || !verifyPassword(user, password)) {
       return res.status(401).json({ error: "invalid_credentials" });
     }
-    const token = createSession(user.id);
+    const token = await createSession(user.id);
     return res.json({
       token,
       user: { id: user.id, username: user.username, role: user.role }
