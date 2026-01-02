@@ -41,6 +41,8 @@ model File {
   category  String?
   fileId    String
   fileUrl   String?
+  thumbnailId  String?
+  thumbnailUrl String?
   createdAt DateTime @default(now())
   product   Product? @relation(fields: [productId], references: [id])
 }

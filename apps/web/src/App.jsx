@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addUpload, listUploads, deleteUpload } from "./offlineQueue.js";
 
 const serialRegex = /^SN-\d{5}$/;
@@ -20,11 +20,6 @@ const PHOTO_SLOTS = [
   { id: "general", label: "Genel", key: "genel" }
 ];
 
-const isRemoteUrl = (value) => {
-  if (!value) return false;
-  return /^https?:\/\//i.test(value);
-};
-
 export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [username, setUsername] = useState("");
@@ -45,7 +40,6 @@ export default function App() {
   const [projectFiles, setProjectFiles] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState({});
   const [slotPreviews, setSlotPreviews] = useState({});
-  const remotePreviewLoads = useRef(new Set());
   const [uploadForm, setUploadForm] = useState({
     type: "test_report", // Default to document type
     category: "Drawings",
@@ -145,7 +139,7 @@ export default function App() {
       const tasks = missing.map(async (file) => {
         try {
           const response = await fetch(
-            `${apiBase}/products/${currentProject.id}/files/${file.id}/view`,
+            `${apiBase}/products/${currentProject.id}/files/${file.id}/thumb`,
             {
               headers: { Authorization: `Bearer ${token}` },
               signal: controller.signal
@@ -194,9 +188,8 @@ export default function App() {
         if (!previewUrl) continue;
         const existingFile = findSlotFile(slot, projectFiles);
         if (!existingFile) continue;
-        const hasRemote = isRemoteUrl(existingFile.fileUrl);
         const hasPreview = !!photoPreviews[existingFile.id];
-        if (hasRemote || hasPreview) {
+        if (hasPreview) {
           URL.revokeObjectURL(previewUrl);
           delete next[slot.key];
           changed = true;
@@ -205,40 +198,6 @@ export default function App() {
       return changed ? next : prev;
     });
   }, [projectFiles, photoPreviews, currentProject?.id]);
-
-  useEffect(() => {
-    if (!currentProject) return;
-    for (const slot of PHOTO_SLOTS) {
-      const previewUrl = slotPreviews[slot.key];
-      if (!previewUrl) continue;
-      const existingFile = findSlotFile(slot, projectFiles);
-      if (!existingFile || !isRemoteUrl(existingFile.fileUrl)) continue;
-
-      const cacheKey = existingFile.updatedAt || existingFile.createdAt;
-      const cacheStamp = cacheKey ? new Date(cacheKey).getTime() : Date.now();
-      const cacheSuffix = existingFile.fileUrl.includes("?") ? "&" : "?";
-      const remoteUrl = `${existingFile.fileUrl}${cacheSuffix}t=${cacheStamp}`;
-      const loadKey = `${slot.key}:${remoteUrl}`;
-      if (remotePreviewLoads.current.has(loadKey)) continue;
-
-      remotePreviewLoads.current.add(loadKey);
-      const img = new Image();
-      img.onload = () => {
-        remotePreviewLoads.current.delete(loadKey);
-        setSlotPreviews((prev) => {
-          if (!prev[slot.key]) return prev;
-          const next = { ...prev };
-          URL.revokeObjectURL(next[slot.key]);
-          delete next[slot.key];
-          return next;
-        });
-      };
-      img.onerror = () => {
-        remotePreviewLoads.current.delete(loadKey);
-      };
-      img.src = remoteUrl;
-    }
-  }, [projectFiles, slotPreviews, currentProject?.id]);
 
   const toggleChecklistItem = async (item) => {
     const token = localStorage.getItem(tokenKey);
@@ -1136,20 +1095,12 @@ export default function App() {
                     // Find uploaded file that matches this slot key (check for timestamp prefix too)
                     // Matches: "onden.jpg", "123456_onden.jpg", "onden_old.png"
                     const existingFile = findSlotFile(slot, projectFiles);
-                    
-                    // Use blob preview when available; otherwise prefer remote URLs or loaded previews
-                    const cacheKey = existingFile?.updatedAt || existingFile?.createdAt;
-                    const cacheStamp = cacheKey ? new Date(cacheKey).getTime() : Date.now();
-                    const cacheSuffix = existingFile?.fileUrl?.includes("?") ? "&" : "?";
-                    const remoteUrl =
-                      existingFile?.fileUrl && isRemoteUrl(existingFile.fileUrl)
-                        ? `${existingFile.fileUrl}${cacheSuffix}t=${cacheStamp}`
-                        : null;
+
+                    // Use local slot preview first, then cached thumbnail preview
                     const displayUrl =
                       slotPreviews[slot.key] ||
-                      (existingFile?.fileUrl?.startsWith("blob:") ? existingFile.fileUrl : null) ||
                       photoPreviews[existingFile?.id] ||
-                      remoteUrl;
+                      (existingFile?.fileUrl?.startsWith("blob:") ? existingFile.fileUrl : null);
                     const isLoadingPreview = !!existingFile && !displayUrl;
 
                     return (

@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
+const sharp = require("sharp");
 require("dotenv").config();
 
 const prisma = require("./db/prisma");
@@ -15,6 +16,7 @@ const {
 const {
   createGDriveProductFolder,
   uploadGDriveFile,
+  uploadGDriveThumbnail,
   downloadGDriveFile
 } = require("./gdrive");
 const multer = require("multer");
@@ -23,6 +25,7 @@ const {
   getStorageConfig,
   createLocalProductFolders,
   saveBufferToFile,
+  saveThumbnailToFile,
   getFileStream
 } = require("./storage");
 
@@ -90,6 +93,14 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: "admin_only" });
   }
   return next();
+}
+
+async function createThumbnailBuffer(buffer) {
+  return sharp(buffer)
+    .rotate()
+    .resize(256, 256, { fit: "cover" })
+    .jpeg({ quality: 72 })
+    .toBuffer();
 }
 
 app.get("/health", (req, res) => {
@@ -386,13 +397,28 @@ app.post("/products/:id/files", requireAuth, upload.single("file"), async (req, 
         originalName: req.file.originalname,
         buffer: req.file.buffer
       });
+      let thumbnail = null;
+      if (type === "photo") {
+        try {
+          const thumbBuffer = await createThumbnailBuffer(req.file.buffer);
+          thumbnail = saveThumbnailToFile({
+            basePath,
+            originalName: saved.fileName,
+            buffer: thumbBuffer
+          });
+        } catch (error) {
+          console.warn("Thumbnail creation failed", error.message);
+        }
+      }
       fileRecord = await prisma.file.create({
         data: {
           productId: product.id,
           type,
           category: category || null,
           fileId: saved.fileName,
-          fileUrl: saved.fullPath
+          fileUrl: saved.fullPath,
+          thumbnailId: thumbnail?.fileName || null,
+          thumbnailUrl: thumbnail?.fullPath || null
         }
       });
     }
@@ -407,19 +433,35 @@ app.post("/products/:id/files", requireAuth, upload.single("file"), async (req, 
         })).productFolderId;
       const saved = await uploadGDriveFile({
         productFolderId: folderId,
-        type,
-        category,
-        originalName: req.file.originalname,
-        buffer: req.file.buffer,
-        mimeType: req.file.mimetype
-      });
+          type,
+          category,
+          originalName: req.file.originalname,
+          buffer: req.file.buffer,
+          mimeType: req.file.mimetype
+        });
+      let thumbnailId = null;
+      if (type === "photo") {
+        try {
+          const thumbBuffer = await createThumbnailBuffer(req.file.buffer);
+          const thumbnail = await uploadGDriveThumbnail({
+            productFolderId: folderId,
+            originalName: saved.name || req.file.originalname,
+            buffer: thumbBuffer
+          });
+          thumbnailId = thumbnail.id;
+        } catch (error) {
+          console.warn("Thumbnail upload failed", error.message);
+        }
+      }
       fileRecord = await prisma.file.create({
         data: {
           productId: product.id,
           type,
           category: category || null,
           fileId: saved.id,
-          fileUrl: saved.webViewLink || saved.webContentLink || null
+          fileUrl: saved.webViewLink || saved.webContentLink || null,
+          thumbnailId,
+          thumbnailUrl: null
         }
       });
     }
@@ -475,6 +517,37 @@ app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
     console.warn("Failed to send admin notice", error.message);
   }
   res.json({ status: "logged", logId: entry.id });
+});
+
+app.get("/products/:id/files/:fileId/thumb", requireAuth, async (req, res) => {
+  const { id: productId, fileId } = req.params;
+  try {
+    const file = await prisma.file.findUnique({ where: { id: fileId } });
+    if (!file || file.productId !== productId) {
+      return res.status(404).json({ error: "file_not_found" });
+    }
+    const storage = getStorageConfig();
+    if (storage.mode === "local") {
+      const targetPath = file.thumbnailUrl || file.fileUrl;
+      if (!targetPath) return res.status(404).json({ error: "file_missing" });
+      res.setHeader(
+        "Content-Type",
+        mime.lookup(targetPath) || "application/octet-stream"
+      );
+      return getFileStream(targetPath).pipe(res);
+    }
+    if (storage.mode === "gdrive") {
+      const targetId = file.thumbnailId || file.fileId;
+      if (!targetId) return res.status(404).json({ error: "file_missing" });
+      const download = await downloadGDriveFile({ fileId: targetId });
+      res.setHeader("Content-Type", download.mimeType || "application/octet-stream");
+      return download.stream.pipe(res);
+    }
+  } catch (error) {
+    console.error("Thumbnail fetch failed", error.message);
+    return res.status(500).json({ error: "thumbnail_fetch_failed" });
+  }
+  return res.status(501).json({ error: "storage_not_configured" });
 });
 
 app.get("/products/:id/files/:fileId/download", requireAuth, requireAdmin, (req, res) => {

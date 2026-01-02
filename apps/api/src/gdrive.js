@@ -48,6 +48,12 @@ function sanitizeName(value) {
     .replace(/\s+/g, "_");
 }
 
+function getThumbnailName(originalName) {
+  const safeName = sanitizeName(originalName);
+  const base = safeName.replace(/\.[^.]+$/, "");
+  return `${base}.jpg`;
+}
+
 async function ensureFolder(drive, name, parentId) {
   const safeName = sanitizeName(name);
   const query = [
@@ -85,7 +91,9 @@ async function createGDriveProductFolder({ year, customer, project, serial }) {
   const projectId = await ensureFolder(drive, project, customerId);
   const productId = await ensureFolder(drive, serial, projectId);
 
-  const subfolders = ["Photos", "Docs", "Test", "Label", "ProjectFiles"];
+  const photosId = await ensureFolder(drive, "Photos", productId);
+  await ensureFolder(drive, "Thumbnails", photosId);
+  const subfolders = ["Docs", "Test", "Label", "ProjectFiles"];
   for (const name of subfolders) {
     await ensureFolder(drive, name, productId);
   }
@@ -161,6 +169,46 @@ async function uploadGDriveFile({
   return response.data;
 }
 
+async function uploadGDriveThumbnail({ productFolderId, originalName, buffer }) {
+  const drive = getDriveClient();
+  const photosId = await ensureFolder(drive, "Photos", productFolderId);
+  const thumbsId = await ensureFolder(drive, "Thumbnails", photosId);
+  const finalName = getThumbnailName(originalName);
+
+  const query = [
+    `'${thumbsId}' in parents`,
+    `name='${finalName}'`,
+    "trashed=false"
+  ].join(" and ");
+
+  try {
+    const existingList = await drive.files.list({
+      q: query,
+      fields: "files(id,name)"
+    });
+    if (existingList.data.files && existingList.data.files.length > 0) {
+      for (const file of existingList.data.files) {
+        await drive.files.delete({ fileId: file.id });
+      }
+    }
+  } catch (e) {
+    console.warn("Error checking/deleting existing thumbnail:", e.message);
+  }
+
+  const response = await drive.files.create({
+    requestBody: {
+      name: finalName,
+      parents: [thumbsId]
+    },
+    media: {
+      mimeType: "image/jpeg",
+      body: Readable.from(buffer)
+    },
+    fields: "id,name"
+  });
+  return response.data;
+}
+
 async function downloadGDriveFile({ fileId }) {
   const drive = getDriveClient();
   const meta = await drive.files.get({
@@ -182,5 +230,6 @@ module.exports = {
   getOAuthClient,
   createGDriveProductFolder,
   uploadGDriveFile,
+  uploadGDriveThumbnail,
   downloadGDriveFile
 };

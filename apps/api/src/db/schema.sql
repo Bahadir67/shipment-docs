@@ -30,6 +30,8 @@ CREATE TABLE files (
   category text,
   file_id text NOT NULL,
   file_url text,
+  thumbnail_id text,
+  thumbnail_url text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

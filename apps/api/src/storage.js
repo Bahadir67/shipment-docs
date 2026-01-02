@@ -40,6 +40,7 @@ function createLocalProductFolders({ year, customer, project, serial }) {
   for (const folder of subfolders) {
     ensureDir(path.join(basePath, folder));
   }
+  ensureDir(path.join(basePath, "Photos", "Thumbnails"));
   const projectSub = ["Drawings", "Hydraulic", "Electrical", "Software"];
   for (const folder of projectSub) {
     ensureDir(path.join(basePath, "ProjectFiles", folder));
@@ -72,6 +73,16 @@ function saveBufferToFile({ basePath, type, category, originalName, buffer }) {
   return { fullPath, fileName: safeName };
 }
 
+function saveThumbnailToFile({ basePath, originalName, buffer }) {
+  const folder = path.join(basePath, "Photos", "Thumbnails");
+  ensureDir(folder);
+  const parsed = path.parse(sanitizeSegment(originalName));
+  const safeName = `${parsed.name}.jpg`;
+  const fullPath = path.join(folder, safeName);
+  fs.writeFileSync(fullPath, buffer);
+  return { fullPath, fileName: safeName };
+}
+
 function getFileStream(filePath) {
   return fs.createReadStream(filePath);
 }
@@ -80,5 +91,6 @@ module.exports = {
   getStorageConfig,
   createLocalProductFolders,
   saveBufferToFile,
+  saveThumbnailToFile,
   getFileStream
 };
