@@ -27,7 +27,8 @@ const {
 } = require("./storage");
 
 const app = express();
-app.use(cors());
+// Allow all origins for demo purposes
+app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "10mb" }));
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -581,6 +582,6 @@ seedAdmin().catch((error) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`);
+app.listen(port, "0.0.0.0", () => {
+  console.log(`API listening on port ${port}`);
 });
