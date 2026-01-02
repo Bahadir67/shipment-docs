@@ -65,6 +65,7 @@ export default function App() {
   const pendingProductsKey = "shipment_docs_pending_products";
   const notesKey = "shipment_docs_notes";
   const currentProjectKey = "shipment_docs_current_project";
+  const lastUserKey = "shipment_docs_last_user";
 
   const isAdmin = user?.role === "admin";
   const findSlotFile = (slot, files) =>
@@ -270,6 +271,7 @@ export default function App() {
       }
       const payload = await response.json();
       setUser(payload);
+      localStorage.setItem(lastUserKey, JSON.stringify(payload));
       fetchProducts(token);
     } catch (error) {
       setStatus({ type: "error", message: "Oturum geri yuklenemedi." });
@@ -658,6 +660,7 @@ export default function App() {
       }
       const payload = await response.json();
       localStorage.setItem(tokenKey, payload.token);
+      localStorage.setItem(lastUserKey, JSON.stringify(payload.user));
       setUser(payload.user);
       fetchProducts(payload.token);
       setStatus({ type: "success", message: "Giris basarili." });
@@ -670,6 +673,7 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem(tokenKey);
     localStorage.removeItem(currentProjectKey);
+    localStorage.removeItem(lastUserKey);
     setUser(null);
     setCurrentProject(null);
     setStatus({ type: "", message: "" });
@@ -738,9 +742,25 @@ export default function App() {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem(tokenKey);
-    if (stored) {
-      fetchMe(stored);
+    const storedToken = localStorage.getItem(tokenKey);
+    const storedUser = localStorage.getItem(lastUserKey);
+    const pending = loadPendingProducts();
+    if (!navigator.onLine) {
+      if (storedUser) {
+        try {
+          setUser(JSON.parse(storedUser));
+        } catch (error) {
+          localStorage.removeItem(lastUserKey);
+        }
+      }
+      setProducts(pending);
+      const storedId = localStorage.getItem(currentProjectKey);
+      if (storedId) {
+        const storedProject = pending.find((item) => item.id === storedId);
+        if (storedProject) setCurrentProject(storedProject);
+      }
+    } else if (storedToken) {
+      fetchMe(storedToken);
     }
     refreshPendingUploads();
   }, []);
