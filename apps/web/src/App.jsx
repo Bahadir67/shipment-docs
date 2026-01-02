@@ -66,6 +66,7 @@ export default function App() {
   const notesKey = "shipment_docs_notes";
   const currentProjectKey = "shipment_docs_current_project";
   const lastUserKey = "shipment_docs_last_user";
+  const pendingChecklistKey = "shipment_docs_pending_checklist";
 
   const isAdmin = user?.role === "admin";
   const findSlotFile = (slot, files) =>
@@ -210,6 +211,25 @@ export default function App() {
       prev.map((i) => (i.id === item.id ? { ...i, completed: nextStatus } : i))
     );
 
+    if (!navigator.onLine) {
+      const pending = loadPendingChecklist();
+      const filtered = pending.filter(
+        (entry) =>
+          entry.productId !== currentProject.id || entry.itemKey !== item.itemKey
+      );
+      const next = [
+        ...filtered,
+        {
+          productId: currentProject.id,
+          itemKey: item.itemKey,
+          category: item.category,
+          completed: nextStatus
+        }
+      ];
+      savePendingChecklist(next);
+      return;
+    }
+
     try {
       const response = await fetch(`${apiBase}/products/${currentProject.id}/checklist`, {
         method: "POST",
@@ -258,6 +278,18 @@ export default function App() {
 
   const saveNotes = (notes) => {
     localStorage.setItem(notesKey, JSON.stringify(notes));
+  };
+
+  const loadPendingChecklist = () => {
+    try {
+      return JSON.parse(localStorage.getItem(pendingChecklistKey) || "[]");
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const savePendingChecklist = (list) => {
+    localStorage.setItem(pendingChecklistKey, JSON.stringify(list));
   };
 
   const fetchMe = async (token) => {
@@ -375,11 +407,41 @@ export default function App() {
     refreshPendingUploads();
   };
 
+  const syncPendingChecklist = async (token) => {
+    const pending = loadPendingChecklist();
+    if (!pending.length) return;
+    const remaining = [];
+    for (const entry of pending) {
+      try {
+        const response = await fetch(
+          `${apiBase}/products/${entry.productId}/checklist`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              itemKey: entry.itemKey,
+              category: entry.category,
+              completed: entry.completed
+            })
+          }
+        );
+        if (!response.ok) remaining.push(entry);
+      } catch (error) {
+        remaining.push(entry);
+      }
+    }
+    savePendingChecklist(remaining);
+  };
+
   const syncAll = async () => {
     const token = localStorage.getItem(tokenKey);
     if (!token) return;
     setSyncing(true);
     await syncPendingProducts(token);
+    await syncPendingChecklist(token);
     await fetchProducts(token);
     await syncPendingUploads(token);
     setSyncing(false);
@@ -698,6 +760,7 @@ export default function App() {
   const saveEdit = async () => {
     const token = localStorage.getItem(tokenKey);
     if (!token || !editingProjectId) return;
+    if (!navigator.onLine) return;
     try {
       const response = await fetch(`${apiBase}/products/${editingProjectId}`, {
         method: "PUT",
@@ -719,6 +782,7 @@ export default function App() {
   const deleteProject = async (id) => {
     const token = localStorage.getItem(tokenKey);
     if (!token) return;
+    if (!navigator.onLine) return;
     try {
       const response = await fetch(`${apiBase}/products/${id}`, {
         method: "DELETE",
