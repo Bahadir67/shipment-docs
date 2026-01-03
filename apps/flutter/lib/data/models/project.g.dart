@@ -27,44 +27,49 @@ const ProjectSchema = CollectionSchema(
       name: r'customer',
       type: IsarType.string,
     ),
-    r'productType': PropertySchema(
+    r'detailsSynced': PropertySchema(
       id: 2,
+      name: r'detailsSynced',
+      type: IsarType.bool,
+    ),
+    r'productType': PropertySchema(
+      id: 3,
       name: r'productType',
       type: IsarType.string,
     ),
     r'project': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'project',
       type: IsarType.string,
     ),
     r'serial': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'serial',
       type: IsarType.string,
     ),
     r'serverId': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'serverId',
       type: IsarType.string,
     ),
     r'status': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'status',
       type: IsarType.string,
     ),
     r'syncStatus': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'syncStatus',
       type: IsarType.byte,
       enumMap: _ProjectsyncStatusEnumValueMap,
     ),
     r'updatedAt': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'updatedAt',
       type: IsarType.dateTime,
     ),
     r'year': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'year',
       type: IsarType.long,
     )
@@ -116,14 +121,15 @@ void _projectSerialize(
 ) {
   writer.writeDateTime(offsets[0], object.createdAt);
   writer.writeString(offsets[1], object.customer);
-  writer.writeString(offsets[2], object.productType);
-  writer.writeString(offsets[3], object.project);
-  writer.writeString(offsets[4], object.serial);
-  writer.writeString(offsets[5], object.serverId);
-  writer.writeString(offsets[6], object.status);
-  writer.writeByte(offsets[7], object.syncStatus.index);
-  writer.writeDateTime(offsets[8], object.updatedAt);
-  writer.writeLong(offsets[9], object.year);
+  writer.writeBool(offsets[2], object.detailsSynced);
+  writer.writeString(offsets[3], object.productType);
+  writer.writeString(offsets[4], object.project);
+  writer.writeString(offsets[5], object.serial);
+  writer.writeString(offsets[6], object.serverId);
+  writer.writeString(offsets[7], object.status);
+  writer.writeByte(offsets[8], object.syncStatus.index);
+  writer.writeDateTime(offsets[9], object.updatedAt);
+  writer.writeLong(offsets[10], object.year);
 }
 
 Project _projectDeserialize(
@@ -134,19 +140,20 @@ Project _projectDeserialize(
 ) {
   final object = Project(
     customer: reader.readString(offsets[1]),
-    productType: reader.readStringOrNull(offsets[2]),
-    project: reader.readString(offsets[3]),
-    serial: reader.readString(offsets[4]),
-    serverId: reader.readStringOrNull(offsets[5]),
-    status: reader.readStringOrNull(offsets[6]) ?? "open",
+    detailsSynced: reader.readBoolOrNull(offsets[2]) ?? false,
+    productType: reader.readStringOrNull(offsets[3]),
+    project: reader.readString(offsets[4]),
+    serial: reader.readString(offsets[5]),
+    serverId: reader.readStringOrNull(offsets[6]),
+    status: reader.readStringOrNull(offsets[7]) ?? "open",
     syncStatus:
-        _ProjectsyncStatusValueEnumMap[reader.readByteOrNull(offsets[7])] ??
+        _ProjectsyncStatusValueEnumMap[reader.readByteOrNull(offsets[8])] ??
             SyncStatus.pending,
-    year: reader.readLong(offsets[9]),
+    year: reader.readLong(offsets[10]),
   );
   object.createdAt = reader.readDateTime(offsets[0]);
   object.id = id;
-  object.updatedAt = reader.readDateTime(offsets[8]);
+  object.updatedAt = reader.readDateTime(offsets[9]);
   return object;
 }
 
@@ -162,21 +169,23 @@ P _projectDeserializeProp<P>(
     case 1:
       return (reader.readString(offset)) as P;
     case 2:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readBoolOrNull(offset) ?? false) as P;
     case 3:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 4:
       return (reader.readString(offset)) as P;
     case 5:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 6:
-      return (reader.readStringOrNull(offset) ?? "open") as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 7:
+      return (reader.readStringOrNull(offset) ?? "open") as P;
+    case 8:
       return (_ProjectsyncStatusValueEnumMap[reader.readByteOrNull(offset)] ??
           SyncStatus.pending) as P;
-    case 8:
-      return (reader.readDateTime(offset)) as P;
     case 9:
+      return (reader.readDateTime(offset)) as P;
+    case 10:
       return (reader.readLong(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -462,6 +471,16 @@ extension ProjectQueryFilter
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'customer',
         value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition> detailsSyncedEqualTo(
+      bool value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'detailsSynced',
+        value: value,
       ));
     });
   }
@@ -1391,6 +1410,18 @@ extension ProjectQuerySortBy on QueryBuilder<Project, Project, QSortBy> {
     });
   }
 
+  QueryBuilder<Project, Project, QAfterSortBy> sortByDetailsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'detailsSynced', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterSortBy> sortByDetailsSyncedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'detailsSynced', Sort.desc);
+    });
+  }
+
   QueryBuilder<Project, Project, QAfterSortBy> sortByProductType() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'productType', Sort.asc);
@@ -1511,6 +1542,18 @@ extension ProjectQuerySortThenBy
   QueryBuilder<Project, Project, QAfterSortBy> thenByCustomerDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'customer', Sort.desc);
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterSortBy> thenByDetailsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'detailsSynced', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterSortBy> thenByDetailsSyncedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'detailsSynced', Sort.desc);
     });
   }
 
@@ -1638,6 +1681,12 @@ extension ProjectQueryWhereDistinct
     });
   }
 
+  QueryBuilder<Project, Project, QDistinct> distinctByDetailsSynced() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'detailsSynced');
+    });
+  }
+
   QueryBuilder<Project, Project, QDistinct> distinctByProductType(
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
@@ -1709,6 +1758,12 @@ extension ProjectQueryProperty
   QueryBuilder<Project, String, QQueryOperations> customerProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'customer');
+    });
+  }
+
+  QueryBuilder<Project, bool, QQueryOperations> detailsSyncedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'detailsSynced');
     });
   }
 

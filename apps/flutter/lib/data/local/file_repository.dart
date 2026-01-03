@@ -21,6 +21,12 @@ class FileRepository {
     return isar.fileItems.get(id);
   }
 
+  Future<void> delete(int id) async {
+    await isar.writeTxn(() async {
+      await isar.fileItems.delete(id);
+    });
+  }
+
   Future<void> updateFromRemote({
     required int id,
     required String serverId,
@@ -36,6 +42,22 @@ class FileRepository {
       item.thumbnailId = thumbnailId;
       item.thumbnailUrl = thumbnailUrl;
       await isar.fileItems.put(item);
+    });
+  }
+
+  Future<void> upsertRemote({required int projectId, required List<FileItem> items}) async {
+    await isar.writeTxn(() async {
+      // First, delete existing remote files for this project to handle deletions on server
+      final existing = await isar.fileItems
+          .filter()
+          .projectIdEqualTo(projectId)
+          .and()
+          .serverIdIsNotNull()
+          .findAll();
+      await isar.fileItems.deleteAll(existing.map((e) => e.id!).toList());
+      
+      // Now, add the new items
+      await isar.fileItems.putAll(items);
     });
   }
 }

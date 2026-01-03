@@ -87,10 +87,18 @@ function getFileStream(filePath) {
   return fs.createReadStream(filePath);
 }
 
+function deleteProductFolder({ year, customer, project, serial }) {
+  const basePath = buildProductPath({ year, customer, project, serial });
+  if (fs.existsSync(basePath)) {
+    fs.rmSync(basePath, { recursive: true, force: true });
+  }
+}
+
 module.exports = {
   getStorageConfig,
   createLocalProductFolders,
   saveBufferToFile,
   saveThumbnailToFile,
-  getFileStream
+  getFileStream,
+  deleteProductFolder
 };

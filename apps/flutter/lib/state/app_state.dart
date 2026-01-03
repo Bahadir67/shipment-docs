@@ -11,6 +11,7 @@ import "../data/local/checklist_repository.dart";
 import "../data/models/user_profile.dart";
 import "../data/models/project.dart";
 import "../data/models/checklist_item.dart";
+import "../data/models/file_item.dart";
 import "../data/remote/api_client.dart";
 import "../data/remote/auth_api.dart";
 import "../data/remote/projects_api.dart";
@@ -47,32 +48,37 @@ class AppState extends ChangeNotifier {
 
   void setCurrentProject(Project? project) {
     currentProject = project;
-    if (project != null && isOnline) {
-      refreshChecklist(project);
+    if (project != null && isOnline && !project.detailsSynced) {
+      refreshProjectDetails(project);
     }
     notifyListeners();
   }
 
   Future<void> init() async {
     final connectivity = Connectivity();
-    isOnline = (await connectivity.checkConnectivity()) != ConnectivityResult.none;
+    isOnline = (await connectivity.checkConnectivity()).contains(ConnectivityResult.none);
     _connectivitySub = connectivity.onConnectivityChanged.listen((result) {
-      final nextOnline = result.isNotEmpty &&
-          result.any((entry) => entry != ConnectivityResult.none);
+      final nextOnline = result.any((r) => r != ConnectivityResult.none);
       if (nextOnline != isOnline) {
         isOnline = nextOnline;
         if (isOnline) {
-          syncEngine.syncAll(token: user?.token);
+          syncAllData();
         }
         notifyListeners();
       }
     });
     user = await userRepository.getCurrent();
-    if (user != null && isOnline) {
-      await refreshProjects();
+    if (isOnline) {
+      await syncAllData();
     }
     isReady = true;
     notifyListeners();
+  }
+  
+  Future<void> syncAllData() async {
+    if (!isOnline || user == null) return;
+    await refreshProjects(); // Get latest list
+    await syncEngine.syncAll(token: user!.token); // Push local changes
   }
 
   Future<bool> login({
@@ -92,8 +98,7 @@ class AppState extends ChangeNotifier {
       );
       await userRepository.save(profile);
       user = profile;
-      await refreshProjects();
-      await syncEngine.syncAll(token: profile.token);
+      await syncAllData();
       notifyListeners();
       return true;
     } catch (_) {
@@ -102,33 +107,51 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshProjects() async {
-    if (!isOnline || user?.token == null) return;
-    final api = ProjectsApi(client: ApiClient(token: user!.token));
-    final data = await api.listProjects();
-    final recent = data.take(5).map((entry) {
-      final project = Project(
-        serverId: entry["id"] as String,
-        serial: entry["serial"] as String,
-        customer: entry["customer"] as String,
-        project: entry["project"] as String,
-        productType: entry["productType"] as String?,
-        year: entry["year"] as int,
-        status: entry["status"] as String? ?? "open"
-      );
-      project.createdAt = DateTime.tryParse(entry["createdAt"] as String? ?? "") ??
-          DateTime.now();
-      project.updatedAt = DateTime.tryParse(entry["updatedAt"] as String? ?? "") ??
-          DateTime.now();
-      return project;
-    }).toList();
-    await projectRepository.upsertRemote(recent);
+    if (!isOnline || user?.token == null) {
+      debugPrint("refreshProjects: Skipped (offline or no user)");
+      return;
+    }
+    debugPrint("refreshProjects: Fetching from server...");
+    try {
+      final api = ProjectsApi(client: ApiClient(token: user!.token));
+      final response = await api.client.dio.get("/products"); // Use client directly to get raw response
+      debugPrint("refreshProjects: RAW RESPONSE: ${response.data}");
+
+      final data = (response.data["data"] as List<dynamic>? ?? []);
+      debugPrint("refreshProjects: Received ${data.length} projects from server.");
+      
+      final projects = data.map((entry) {
+        final e = entry as Map<String, dynamic>;
+        return Project(
+          serverId: e["id"] as String,
+          serial: e["serial"] as String,
+          customer: e["customer"] as String,
+          project: e["project"] as String,
+          productType: e["productType"] as String?,
+          year: e["year"] as int,
+          status: e["status"] as String? ?? "open"
+        )..createdAt = DateTime.tryParse(e["createdAt"] as String? ?? "") ??
+            DateTime.now()
+         ..updatedAt = DateTime.tryParse(e["updatedAt"] as String? ?? "") ??
+            DateTime.now();
+      }).toList();
+
+      await projectRepository.upsertRemote(projects);
+      debugPrint("refreshProjects: Upserted ${projects.length} projects locally.");
+      notifyListeners(); // Force UI to rebuild with new projects
+    } catch (e, stack) {
+      debugPrint("refreshProjects: FAILED with error: $e");
+      debugPrint(stack.toString());
+    }
   }
 
-  Future<void> refreshChecklist(Project project) async {
+  Future<void> refreshProjectDetails(Project project) async {
     if (!isOnline || user?.token == null || project.serverId == null) return;
-    final api = ChecklistApi(client: ApiClient(token: user!.token));
-    final data = await api.listItems(project.serverId!);
-    final List<ChecklistItem> items = data.map<ChecklistItem>((entry) {
+    
+    // Fetch checklist
+    final checklistApi = ChecklistApi(client: ApiClient(token: user!.token));
+    final checklistData = await checklistApi.listItems(project.serverId!);
+    final checklistItems = checklistData.map<ChecklistItem>((entry) {
       return ChecklistItem(
         serverId: entry["id"] as String?,
         projectId: project.id,
@@ -138,7 +161,30 @@ class AppState extends ChangeNotifier {
         completed: entry["completed"] as bool? ?? false
       );
     }).toList();
-    await checklistRepository.upsertRemote(projectId: project.id, items: items);
+    await checklistRepository.upsertRemote(projectId: project.id, items: checklistItems);
+
+    // Fetch files
+    final projectsApi = ProjectsApi(client: ApiClient(token: user!.token));
+    final filesData = await projectsApi.listFiles(project.serverId!);
+    final fileItems = filesData.map<FileItem>((entry) {
+      return FileItem(
+        serverId: entry["id"] as String,
+        projectId: project.id,
+        projectServerId: project.serverId,
+        type: entry["type"] as String,
+        category: entry["category"] as String?,
+        fileName: entry["fileId"] as String, // or a better name
+        serverUrl: entry["fileUrl"] as String?,
+        thumbnailId: entry["thumbnailId"] as String?,
+        thumbnailUrl: entry["thumbnailUrl"] as String?
+      );
+    }).toList();
+    await fileRepository.upsertRemote(projectId: project.id, items: fileItems);
+
+    // Mark as synced
+    project.detailsSynced = true;
+    await projectRepository.save(project);
+    notifyListeners();
   }
 
   Future<void> logout() async {

@@ -19,6 +19,7 @@ class Project {
   DateTime updatedAt = DateTime.now();
   @enumerated
   SyncStatus syncStatus;
+  bool detailsSynced;
 
   Project({
     this.serverId,
@@ -28,6 +29,7 @@ class Project {
     this.productType,
     required this.year,
     this.status = "open",
-    this.syncStatus = SyncStatus.pending
+    this.syncStatus = SyncStatus.pending,
+    this.detailsSynced = false,
   });
 }

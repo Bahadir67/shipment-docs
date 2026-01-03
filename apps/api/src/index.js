@@ -140,6 +140,18 @@ app.get("/auth/me", requireAuth, (req, res) => {
   res.json({ id, username, role });
 });
 
+app.get("/auth/users", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: { id: true, username: true, role: true, email: true }
+    });
+    return res.json({ data: users });
+  } catch (error) {
+    console.error("User list failed", error.message);
+    return res.status(500).json({ error: "list_failed" });
+  }
+});
+
 app.post("/auth/users", requireAuth, requireAdmin, async (req, res) => {
   const { username, password, role, email } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: "missing_fields" });
@@ -362,12 +374,32 @@ app.put("/products/:id", requireAuth, requireAdmin, async (req, res) => {
 });
 
 app.delete("/products/:id", requireAuth, requireAdmin, async (req, res) => {
+  const hard = req.query.hard === "true";
   try {
-    const updated = await prisma.product.update({
-      where: { id: req.params.id },
-      data: { status: "deleted" }
-    });
-    return res.json(updated);
+    if (hard) {
+      // Fetch product first to get folder details
+      const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+      if (product) {
+        // Delete physical folder
+        storage.deleteProductFolder({
+          year: product.year,
+          customer: product.customer,
+          project: product.project,
+          serial: product.serial
+        });
+      }
+
+      await prisma.file.deleteMany({ where: { productId: req.params.id } });
+      await prisma.checklistItem.deleteMany({ where: { productId: req.params.id } });
+      const deleted = await prisma.product.delete({ where: { id: req.params.id } });
+      return res.json(deleted);
+    } else {
+      const updated = await prisma.product.update({
+        where: { id: req.params.id },
+        data: { status: "deleted" }
+      });
+      return res.json(updated);
+    }
   } catch (error) {
     if (error.code === "P2025") {
       return res.status(404).json({ error: "product_not_found" });
@@ -657,6 +689,44 @@ app.get("/graph/items/:itemId", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Graph item fetch failed", error.message);
     return res.status(500).json({ error: "graph_item_failed" });
+  }
+});
+
+app.post("/auth/change-password", requireAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!verifyPassword(user, currentPassword)) {
+      return res.status(401).json({ error: "invalid_current_password" });
+    }
+    const { salt, hash } = hashPassword(newPassword);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: hash, passwordSalt: salt }
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Password change failed", error.message);
+    return res.status(500).json({ error: "change_failed" });
+  }
+});
+
+app.put("/products/:id/restore", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const updated = await prisma.product.update({
+      where: { id: req.params.id },
+      data: { status: "open" }
+    });
+    return res.json(updated);
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "product_not_found" });
+    }
+    console.error("Product restore failed", error.message);
+    return res.status(500).json({ error: "product_restore_failed" });
   }
 });
 

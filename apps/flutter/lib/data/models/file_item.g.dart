@@ -111,7 +111,12 @@ int _fileItemEstimateSize(
     }
   }
   bytesCount += 3 + object.fileName.length * 3;
-  bytesCount += 3 + object.localPath.length * 3;
+  {
+    final value = object.localPath;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   {
     final value = object.projectServerId;
     if (value != null) {
@@ -182,7 +187,7 @@ FileItem _fileItemDeserialize(
   final object = FileItem(
     category: reader.readStringOrNull(offsets[0]),
     fileName: reader.readString(offsets[2]),
-    localPath: reader.readString(offsets[3]),
+    localPath: reader.readStringOrNull(offsets[3]),
     projectId: reader.readLong(offsets[4]),
     projectServerId: reader.readStringOrNull(offsets[5]),
     serverId: reader.readStringOrNull(offsets[6]),
@@ -214,7 +219,7 @@ P _fileItemDeserializeProp<P>(
     case 2:
       return (reader.readString(offset)) as P;
     case 3:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 4:
       return (reader.readLong(offset)) as P;
     case 5:
@@ -720,8 +725,24 @@ extension FileItemQueryFilter
     });
   }
 
+  QueryBuilder<FileItem, FileItem, QAfterFilterCondition> localPathIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'localPath',
+      ));
+    });
+  }
+
+  QueryBuilder<FileItem, FileItem, QAfterFilterCondition> localPathIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'localPath',
+      ));
+    });
+  }
+
   QueryBuilder<FileItem, FileItem, QAfterFilterCondition> localPathEqualTo(
-    String value, {
+    String? value, {
     bool caseSensitive = true,
   }) {
     return QueryBuilder.apply(this, (query) {
@@ -734,7 +755,7 @@ extension FileItemQueryFilter
   }
 
   QueryBuilder<FileItem, FileItem, QAfterFilterCondition> localPathGreaterThan(
-    String value, {
+    String? value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
@@ -749,7 +770,7 @@ extension FileItemQueryFilter
   }
 
   QueryBuilder<FileItem, FileItem, QAfterFilterCondition> localPathLessThan(
-    String value, {
+    String? value, {
     bool include = false,
     bool caseSensitive = true,
   }) {
@@ -764,8 +785,8 @@ extension FileItemQueryFilter
   }
 
   QueryBuilder<FileItem, FileItem, QAfterFilterCondition> localPathBetween(
-    String lower,
-    String upper, {
+    String? lower,
+    String? upper, {
     bool includeLower = true,
     bool includeUpper = true,
     bool caseSensitive = true,
@@ -2441,7 +2462,7 @@ extension FileItemQueryProperty
     });
   }
 
-  QueryBuilder<FileItem, String, QQueryOperations> localPathProperty() {
+  QueryBuilder<FileItem, String?, QQueryOperations> localPathProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'localPath');
     });

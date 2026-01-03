@@ -17,7 +17,7 @@ class FileItem {
   String type;
   String? category;
   String fileName;
-  String localPath;
+  String? localPath;
   String? thumbnailPath;
   DateTime createdAt = DateTime.now();
   @enumerated
@@ -33,7 +33,7 @@ class FileItem {
     required this.type,
     this.category,
     required this.fileName,
-    required this.localPath,
+    this.localPath,
     this.thumbnailPath,
     this.syncStatus = SyncStatus.pending
   });

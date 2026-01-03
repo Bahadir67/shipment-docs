@@ -28,4 +28,8 @@ class SyncQueueRepository {
       await isar.syncQueueItems.put(item);
     });
   }
+
+  Future<int> count() async {
+    return isar.syncQueueItems.where().count();
+  }
 }
