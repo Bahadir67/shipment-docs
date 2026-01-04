@@ -103,10 +103,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           children: [
                             TextFormField(
                               controller: _usernameController,
-                              style: const TextStyle(color: AppTheme.ink), // Dark text input
+                              style: const TextStyle(color: AppTheme.ink), // Force dark text
                               decoration: const InputDecoration(
                                 labelText: "Kullanici adi",
-                                hintText: "qc_user"
+                                hintText: "qc_user",
+                                labelStyle: TextStyle(color: AppTheme.ink),
+                                hintStyle: TextStyle(color: Colors.black38),
                               ),
                               validator: (value) =>
                                   value == null || value.isEmpty ? "Zorunlu" : null
@@ -114,10 +116,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 16),
                             TextFormField(
                               controller: _passwordController,
-                              style: const TextStyle(color: AppTheme.ink), // Dark text input
+                              style: const TextStyle(color: AppTheme.ink), // Force dark text
                               decoration: const InputDecoration(
                                 labelText: "Sifre",
-                                hintText: "Sifre girin"
+                                hintText: "Sifre girin",
+                                labelStyle: TextStyle(color: AppTheme.ink),
+                                hintStyle: TextStyle(color: Colors.black38),
                               ),
                               obscureText: true,
                               validator: (value) =>

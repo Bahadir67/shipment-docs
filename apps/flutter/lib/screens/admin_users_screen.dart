@@ -16,7 +16,8 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   @override
   void initState() {
     super.initState();
-    _refresh();
+    // Defer refresh to ensure context is available
+    Future.microtask(() => _refresh());
   }
 
   Future<void> _refresh() async {

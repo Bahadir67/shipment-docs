@@ -90,62 +90,13 @@ class _NewProjectTabState extends State<NewProjectTab> {
       status: "open"
     );
 
-    // 1. Save Project
+    // 1. Save Project (Checklist is now handled by checklistMask field with default "0")
     final localProjectId = await appState.projectRepository.save(project);
     project.id = localProjectId;
 
-    // 2. Create Default Checklist Items
-    // Format: key (unique per project), label (display text), category (grouping)
-    final defaultChecklist = [
-      // MECHANICAL
-      {"key": "mech_cleanliness", "label": "Genel Temizlik ve Yag Kacagi Kontrolu", "cat": "MEKANIK"},
-      {"key": "mech_paint", "label": "Boya ve Kaplama Kontrolu", "cat": "MEKANIK"},
-      {"key": "mech_label", "label": "Etiket ve Nameplate Dogrulugu", "cat": "MEKANIK"},
-      {"key": "mech_torque", "label": "Civata Tork Kontrolu ve Isaretleme", "cat": "MEKANIK"},
-      {"key": "mech_packaging", "label": "Nakliye Takozlari ve Ambalaj", "cat": "MEKANIK"},
-
-      // HYDRAULIC
-      {"key": "hyd_leak", "label": "Rakor ve Baglanti Sizdirmazlik", "cat": "HIDROLIK"},
-      {"key": "hyd_hoses", "label": "Hortum Yonlendirmesi ve Kelepceler", "cat": "HIDROLIK"},
-      {"key": "hyd_filters", "label": "Filtre Elemanlari ve Gostergeler", "cat": "HIDROLIK"},
-      {"key": "hyd_oil_level", "label": "Yag Seviyesi ve Gosterge Cami", "cat": "HIDROLIK"},
-      {"key": "hyd_test_ports", "label": "Test Portlari ve Kapaklar", "cat": "HIDROLIK"},
-
-      // ELECTRICAL
-      {"key": "elec_cabling", "label": "Kablo Yonlendirmesi ve Spiral", "cat": "ELEKTRIK"},
-      {"key": "elec_terminals", "label": "Klemens Baglantilari ve Numaralandirma", "cat": "ELEKTRIK"},
-      {"key": "elec_grounding", "label": "Topraklama Baglantisi", "cat": "ELEKTRIK"},
-      {"key": "elec_motor", "label": "Motor Klemens Kutusu Sizdirmazlik", "cat": "ELEKTRIK"},
-      {"key": "elec_sensors", "label": "Sensor Montaj ve Baglantilari", "cat": "ELEKTRIK"},
-    ];
-
-    final List<ChecklistItem> checklistItems = defaultChecklist.map((item) {
-      return ChecklistItem(
-        projectId: localProjectId,
-        projectServerId: null,
-        itemKey: item["key"]!,
-        category: item["cat"]!, // Store category group here
-        // We can store the detailed label in a description field if we had one,
-        // or just use itemKey mapping. Ideally model should have 'label'.
-        // For now, let's use 'itemKey' to store the label since key is unique anyway 
-        // OR better: Update ChecklistItem model to support 'label'.
-        // But to stick to existing schema: We'll put label in itemKey for display? 
-        // No, itemKey is for ID. Let's use 'category' for Group and format itemKey as 'label|key'.
-        // Actually, looking at schema: itemKey, category, completed.
-        // Let's use: category = "MEKANIK", itemKey = "Genel Temizlik..." (Display Text)
-        // Ideally we need a separate label field, but reusing itemKey as display text is easiest now.
-        completed: false
-      )..itemKey = item["label"]!; // Use label as the key/display text for now
-    }).toList();
-
-    await appState.checklistRepository.upsertRemote(
-      projectId: localProjectId, 
-      items: checklistItems
-    );
-
     appState.setCurrentProject(project);
 
-    // 3. Sync
+    // 2. Sync
     await appState.syncEngine.enqueue(
       type: "project_create",
       payload: {
@@ -154,7 +105,8 @@ class _NewProjectTabState extends State<NewProjectTab> {
         "customer": project.customer,
         "project": project.project,
         "productType": project.productType,
-        "year": project.year
+        "year": project.year,
+        // Server will set default checklistMask
       }
     );
 
@@ -164,10 +116,10 @@ class _NewProjectTabState extends State<NewProjectTab> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Proje ve Checklist olusturuldu."))
+        const SnackBar(content: Text("Proje olusturuldu."))
       );
       
-      // Reset form and generate next serial
+      // Reset form
       _formKey.currentState!.reset();
       _customerController.clear();
       _projectController.clear();
@@ -175,6 +127,9 @@ class _NewProjectTabState extends State<NewProjectTab> {
       final currentYear = DateTime.now().year;
       _yearController.text = currentYear.toString();
       _generateNextSerial(currentYear);
+
+      // Navigate to Dashboard Tab (Index 0)
+      DefaultTabController.of(context).animateTo(0);
     }
     setState(() => _saving = false);
   }

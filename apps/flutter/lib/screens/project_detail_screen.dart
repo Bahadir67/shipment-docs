@@ -226,6 +226,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       await appState.syncEngine.syncAll(token: appState.user?.token);
     }
 
+    // Clear current project from state so dashboard updates
+    appState.setCurrentProject(null);
+
     if (mounted) {
       Navigator.pop(context); // Close detail screen
       appState.notifyListeners();
