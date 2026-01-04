@@ -11,7 +11,10 @@ import "state/app_scope.dart";
 import "state/app_state.dart";
 
 Future<void> main() async {
+  // 1. Ensure bindings are ready
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // 2. RUN APP IMMEDIATELY to show the dark SplashScreen as fast as possible
   runApp(const BootstrapApp());
 }
 
