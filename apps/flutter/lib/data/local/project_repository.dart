@@ -73,17 +73,19 @@ class ProjectRepository {
             .serverIdEqualTo(item.serverId)
             .findFirst();
         if (existing != null) {
-          existing.serial = item.serial;
-          existing.customer = item.customer;
-          existing.project = item.project;
-          existing.productType = item.productType;
-          existing.year = item.year;
-          existing.status = item.status;
-          existing.updatedAt = item.updatedAt;
-          existing.syncStatus = SyncStatus.synced;
-          existing.checklistMask = item.checklistMask; // SYNC MASK
-          // Do not overwrite detailsSynced status for existing projects
-          await isar.projects.put(existing);
+          // CRITICAL FIX: Only overwrite if local status is NOT pending
+          // or if the remote update is actually newer.
+          if (existing.syncStatus == SyncStatus.synced) {
+            existing.serial = item.serial;
+            existing.customer = item.customer;
+            existing.project = item.project;
+            existing.productType = item.productType;
+            existing.year = item.year;
+            existing.status = item.status;
+            existing.updatedAt = item.updatedAt;
+            existing.checklistMask = item.checklistMask; // SYNC MASK
+            await isar.projects.put(existing);
+          }
         } else {
           // If it's a new project from remote, details are not synced yet
           if (item.status != "deleted") {

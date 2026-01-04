@@ -17,59 +17,64 @@ const ProjectSchema = CollectionSchema(
   name: r'Project',
   id: 3302999628838485849,
   properties: {
-    r'createdAt': PropertySchema(
+    r'checklistMask': PropertySchema(
       id: 0,
+      name: r'checklistMask',
+      type: IsarType.string,
+    ),
+    r'createdAt': PropertySchema(
+      id: 1,
       name: r'createdAt',
       type: IsarType.dateTime,
     ),
     r'customer': PropertySchema(
-      id: 1,
+      id: 2,
       name: r'customer',
       type: IsarType.string,
     ),
     r'detailsSynced': PropertySchema(
-      id: 2,
+      id: 3,
       name: r'detailsSynced',
       type: IsarType.bool,
     ),
     r'productType': PropertySchema(
-      id: 3,
+      id: 4,
       name: r'productType',
       type: IsarType.string,
     ),
     r'project': PropertySchema(
-      id: 4,
+      id: 5,
       name: r'project',
       type: IsarType.string,
     ),
     r'serial': PropertySchema(
-      id: 5,
+      id: 6,
       name: r'serial',
       type: IsarType.string,
     ),
     r'serverId': PropertySchema(
-      id: 6,
+      id: 7,
       name: r'serverId',
       type: IsarType.string,
     ),
     r'status': PropertySchema(
-      id: 7,
+      id: 8,
       name: r'status',
       type: IsarType.string,
     ),
     r'syncStatus': PropertySchema(
-      id: 8,
+      id: 9,
       name: r'syncStatus',
       type: IsarType.byte,
       enumMap: _ProjectsyncStatusEnumValueMap,
     ),
     r'updatedAt': PropertySchema(
-      id: 9,
+      id: 10,
       name: r'updatedAt',
       type: IsarType.dateTime,
     ),
     r'year': PropertySchema(
-      id: 10,
+      id: 11,
       name: r'year',
       type: IsarType.long,
     )
@@ -94,6 +99,7 @@ int _projectEstimateSize(
   Map<Type, List<int>> allOffsets,
 ) {
   var bytesCount = offsets.last;
+  bytesCount += 3 + object.checklistMask.length * 3;
   bytesCount += 3 + object.customer.length * 3;
   {
     final value = object.productType;
@@ -119,17 +125,18 @@ void _projectSerialize(
   List<int> offsets,
   Map<Type, List<int>> allOffsets,
 ) {
-  writer.writeDateTime(offsets[0], object.createdAt);
-  writer.writeString(offsets[1], object.customer);
-  writer.writeBool(offsets[2], object.detailsSynced);
-  writer.writeString(offsets[3], object.productType);
-  writer.writeString(offsets[4], object.project);
-  writer.writeString(offsets[5], object.serial);
-  writer.writeString(offsets[6], object.serverId);
-  writer.writeString(offsets[7], object.status);
-  writer.writeByte(offsets[8], object.syncStatus.index);
-  writer.writeDateTime(offsets[9], object.updatedAt);
-  writer.writeLong(offsets[10], object.year);
+  writer.writeString(offsets[0], object.checklistMask);
+  writer.writeDateTime(offsets[1], object.createdAt);
+  writer.writeString(offsets[2], object.customer);
+  writer.writeBool(offsets[3], object.detailsSynced);
+  writer.writeString(offsets[4], object.productType);
+  writer.writeString(offsets[5], object.project);
+  writer.writeString(offsets[6], object.serial);
+  writer.writeString(offsets[7], object.serverId);
+  writer.writeString(offsets[8], object.status);
+  writer.writeByte(offsets[9], object.syncStatus.index);
+  writer.writeDateTime(offsets[10], object.updatedAt);
+  writer.writeLong(offsets[11], object.year);
 }
 
 Project _projectDeserialize(
@@ -139,21 +146,23 @@ Project _projectDeserialize(
   Map<Type, List<int>> allOffsets,
 ) {
   final object = Project(
-    customer: reader.readString(offsets[1]),
-    detailsSynced: reader.readBoolOrNull(offsets[2]) ?? false,
-    productType: reader.readStringOrNull(offsets[3]),
-    project: reader.readString(offsets[4]),
-    serial: reader.readString(offsets[5]),
-    serverId: reader.readStringOrNull(offsets[6]),
-    status: reader.readStringOrNull(offsets[7]) ?? "open",
+    checklistMask: reader.readStringOrNull(offsets[0]) ??
+        "00000000000000000000000000000000",
+    customer: reader.readString(offsets[2]),
+    detailsSynced: reader.readBoolOrNull(offsets[3]) ?? false,
+    productType: reader.readStringOrNull(offsets[4]),
+    project: reader.readString(offsets[5]),
+    serial: reader.readString(offsets[6]),
+    serverId: reader.readStringOrNull(offsets[7]),
+    status: reader.readStringOrNull(offsets[8]) ?? "open",
     syncStatus:
-        _ProjectsyncStatusValueEnumMap[reader.readByteOrNull(offsets[8])] ??
+        _ProjectsyncStatusValueEnumMap[reader.readByteOrNull(offsets[9])] ??
             SyncStatus.pending,
-    year: reader.readLong(offsets[10]),
+    year: reader.readLong(offsets[11]),
   );
-  object.createdAt = reader.readDateTime(offsets[0]);
+  object.createdAt = reader.readDateTime(offsets[1]);
   object.id = id;
-  object.updatedAt = reader.readDateTime(offsets[9]);
+  object.updatedAt = reader.readDateTime(offsets[10]);
   return object;
 }
 
@@ -165,27 +174,30 @@ P _projectDeserializeProp<P>(
 ) {
   switch (propertyId) {
     case 0:
-      return (reader.readDateTime(offset)) as P;
+      return (reader.readStringOrNull(offset) ??
+          "00000000000000000000000000000000") as P;
     case 1:
-      return (reader.readString(offset)) as P;
+      return (reader.readDateTime(offset)) as P;
     case 2:
-      return (reader.readBoolOrNull(offset) ?? false) as P;
-    case 3:
-      return (reader.readStringOrNull(offset)) as P;
-    case 4:
       return (reader.readString(offset)) as P;
+    case 3:
+      return (reader.readBoolOrNull(offset) ?? false) as P;
+    case 4:
+      return (reader.readStringOrNull(offset)) as P;
     case 5:
       return (reader.readString(offset)) as P;
     case 6:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 7:
-      return (reader.readStringOrNull(offset) ?? "open") as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 8:
+      return (reader.readStringOrNull(offset) ?? "open") as P;
+    case 9:
       return (_ProjectsyncStatusValueEnumMap[reader.readByteOrNull(offset)] ??
           SyncStatus.pending) as P;
-    case 9:
-      return (reader.readDateTime(offset)) as P;
     case 10:
+      return (reader.readDateTime(offset)) as P;
+    case 11:
       return (reader.readLong(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -292,6 +304,138 @@ extension ProjectQueryWhere on QueryBuilder<Project, Project, QWhereClause> {
 
 extension ProjectQueryFilter
     on QueryBuilder<Project, Project, QFilterCondition> {
+  QueryBuilder<Project, Project, QAfterFilterCondition> checklistMaskEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'checklistMask',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition>
+      checklistMaskGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'checklistMask',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition> checklistMaskLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'checklistMask',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition> checklistMaskBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'checklistMask',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition> checklistMaskStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'checklistMask',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition> checklistMaskEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'checklistMask',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition> checklistMaskContains(
+      String value,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'checklistMask',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition> checklistMaskMatches(
+      String pattern,
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'checklistMask',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition> checklistMaskIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'checklistMask',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterFilterCondition>
+      checklistMaskIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'checklistMask',
+        value: '',
+      ));
+    });
+  }
+
   QueryBuilder<Project, Project, QAfterFilterCondition> createdAtEqualTo(
       DateTime value) {
     return QueryBuilder.apply(this, (query) {
@@ -1386,6 +1530,18 @@ extension ProjectQueryLinks
     on QueryBuilder<Project, Project, QFilterCondition> {}
 
 extension ProjectQuerySortBy on QueryBuilder<Project, Project, QSortBy> {
+  QueryBuilder<Project, Project, QAfterSortBy> sortByChecklistMask() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'checklistMask', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterSortBy> sortByChecklistMaskDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'checklistMask', Sort.desc);
+    });
+  }
+
   QueryBuilder<Project, Project, QAfterSortBy> sortByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.asc);
@@ -1521,6 +1677,18 @@ extension ProjectQuerySortBy on QueryBuilder<Project, Project, QSortBy> {
 
 extension ProjectQuerySortThenBy
     on QueryBuilder<Project, Project, QSortThenBy> {
+  QueryBuilder<Project, Project, QAfterSortBy> thenByChecklistMask() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'checklistMask', Sort.asc);
+    });
+  }
+
+  QueryBuilder<Project, Project, QAfterSortBy> thenByChecklistMaskDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'checklistMask', Sort.desc);
+    });
+  }
+
   QueryBuilder<Project, Project, QAfterSortBy> thenByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'createdAt', Sort.asc);
@@ -1668,6 +1836,14 @@ extension ProjectQuerySortThenBy
 
 extension ProjectQueryWhereDistinct
     on QueryBuilder<Project, Project, QDistinct> {
+  QueryBuilder<Project, Project, QDistinct> distinctByChecklistMask(
+      {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'checklistMask',
+          caseSensitive: caseSensitive);
+    });
+  }
+
   QueryBuilder<Project, Project, QDistinct> distinctByCreatedAt() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'createdAt');
@@ -1746,6 +1922,12 @@ extension ProjectQueryProperty
   QueryBuilder<Project, int, QQueryOperations> idProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'id');
+    });
+  }
+
+  QueryBuilder<Project, String, QQueryOperations> checklistMaskProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'checklistMask');
     });
   }
 

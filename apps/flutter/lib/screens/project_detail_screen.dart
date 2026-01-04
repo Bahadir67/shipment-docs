@@ -167,8 +167,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
     final newMask = _toggleBit(project.checklistMask, index, value);
     project.checklistMask = newMask;
+    project.syncStatus = SyncStatus.pending; // Mark as pending sync
     
-    // Save to Local DB
+    // Save to Local DB (Now actually saves to disk thanks to build_runner)
     await appState.projectRepository.save(project);
     
     // Enqueue Sync (Send only the mask)
