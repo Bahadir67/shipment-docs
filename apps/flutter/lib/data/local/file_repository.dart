@@ -47,17 +47,42 @@ class FileRepository {
 
   Future<void> upsertRemote({required int projectId, required List<FileItem> items}) async {
     await isar.writeTxn(() async {
-      // First, delete existing remote files for this project to handle deletions on server
-      final existing = await isar.fileItems
-          .filter()
-          .projectIdEqualTo(projectId)
-          .and()
-          .serverIdIsNotNull()
-          .findAll();
-      await isar.fileItems.deleteAll(existing.map((e) => e.id!).toList());
-      
-      // Now, add the new items
-      await isar.fileItems.putAll(items);
+      for (final remote in items) {
+        // Find existing local file for this project by category or serverId
+        FileItem? existing;
+        
+        if (remote.serverId != null) {
+          existing = await isar.fileItems
+              .filter()
+              .projectIdEqualTo(projectId)
+              .and()
+              .serverIdEqualTo(remote.serverId)
+              .findFirst();
+        }
+
+        // If not found by serverId, try matching by category (for photos taken offline)
+        if (existing == null && remote.category != null) {
+          existing = await isar.fileItems
+              .filter()
+              .projectIdEqualTo(projectId)
+              .and()
+              .categoryEqualTo(remote.category)
+              .findFirst();
+        }
+
+        if (existing != null) {
+          // UPDATE: Preserve local path while updating server info
+          existing.serverId = remote.serverId;
+          existing.serverUrl = remote.serverUrl;
+          existing.thumbnailId = remote.thumbnailId;
+          existing.thumbnailUrl = remote.thumbnailUrl;
+          // Keep localPath and thumbnailPath as they are on this specific device
+          await isar.fileItems.put(existing);
+        } else {
+          // INSERT: New file from remote that doesn't exist here
+          await isar.fileItems.put(remote);
+        }
+      }
     });
   }
 }
