@@ -141,6 +141,15 @@ class AppState extends ChangeNotifier {
       }).toList();
 
       await projectRepository.upsertRemote(projects);
+      
+      // Update currentProject reference if it's currently selected
+      if (currentProject != null) {
+        final updated = await projectRepository.getById(currentProject!.id);
+        if (updated != null) {
+          currentProject = updated;
+        }
+      }
+
       debugPrint("refreshProjects: Upserted ${projects.length} projects locally.");
       notifyListeners(); // Force UI to rebuild with new projects
     } catch (e, stack) {
