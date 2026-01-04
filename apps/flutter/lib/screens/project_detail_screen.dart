@@ -204,6 +204,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
     if (mounted) {
       Navigator.pop(context); // Close detail screen
+      appState.notifyListeners(); // Force dashboard refresh
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Proje silindi.")));
     }
   }

@@ -89,8 +89,12 @@ function getFileStream(filePath) {
 
 function deleteProductFolder({ year, customer, project, serial }) {
   const basePath = buildProductPath({ year, customer, project, serial });
+  console.log(`Attempting to delete folder: ${basePath}`);
   if (fs.existsSync(basePath)) {
     fs.rmSync(basePath, { recursive: true, force: true });
+    console.log("Folder deleted successfully.");
+  } else {
+    console.log("Folder not found, skipping.");
   }
 }
 
