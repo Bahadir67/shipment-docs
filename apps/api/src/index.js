@@ -382,7 +382,7 @@ app.get("/products", requireAuth, async (req, res) => {
   }
 });
 
-app.put("/products/:id", requireAuth, requireAdmin, async (req, res) => {
+app.put("/products/:id", requireAuth, async (req, res) => {
   const { serial, customer, project, productType, year, status, checklistMask } = req.body || {};
   const data = {};
   if (serial) data.serial = serial;
@@ -392,6 +392,7 @@ app.put("/products/:id", requireAuth, requireAdmin, async (req, res) => {
   if (year) data.year = Number(year);
   if (status) data.status = status;
   if (checklistMask) data.checklistMask = checklistMask;
+
   try {
     const updated = await prisma.product.update({
       where: { id: req.params.id },
@@ -518,7 +519,7 @@ app.get("/products/:id/files/:fileId/thumb", requireAuth, async (req, res) => {
   return res.status(501).json({ error: "storage_not_configured" });
 });
 
-app.get("/products/:id/files/:fileId/download", requireAuth, requireAdmin, (req, res) => {
+app.get("/products/:id/files/:fileId/download", requireAuth, (req, res) => {
   prisma.file
     .findUnique({ where: { id: req.params.fileId } })
     .then(async (file) => {
@@ -551,7 +552,7 @@ app.get("/products/:id/files/:fileId/download", requireAuth, requireAdmin, (req,
     });
 });
 
-app.get("/admin/view-logs", requireAuth, requireAdmin, async (req, res) => {
+app.get("/admin/view-logs", requireAuth, async (req, res) => {
   try {
     const logs = await prisma.viewLog.findMany({ orderBy: { createdAt: "desc" } });
     return res.json({ data: logs });
@@ -645,7 +646,7 @@ app.post("/auth/change-password", requireAuth, async (req, res) => {
   }
 });
 
-app.put("/products/:id/restore", requireAuth, requireAdmin, async (req, res) => {
+app.put("/products/:id/restore", requireAuth, async (req, res) => {
   try {
     const updated = await prisma.product.update({
       where: { id: req.params.id },
@@ -665,9 +666,20 @@ async function seedAdmin() {
   const username = process.env.ADMIN_USERNAME;
   const password = process.env.ADMIN_PASSWORD;
   if (!username || !password) return;
-  const existing = await prisma.user.findUnique({ where: { username } });
-  if (existing) return;
+  
   const { salt, hash } = hashPassword(password);
+  
+  const existing = await prisma.user.findUnique({ where: { username } });
+  if (existing) {
+    // Force update password to match ENV in case it was lost or changed during migration
+    await prisma.user.update({
+      where: { username },
+      data: { passwordHash: hash, passwordSalt: salt }
+    });
+    console.log(`Admin user '${username}' password synchronized.`);
+    return;
+  }
+  
   await prisma.user.create({
     data: {
       username,
@@ -677,6 +689,7 @@ async function seedAdmin() {
       passwordSalt: salt
     }
   });
+  console.log(`Admin user '${username}' created.`);
 }
 
 seedAdmin().catch((error) => {

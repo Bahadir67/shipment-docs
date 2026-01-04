@@ -57,11 +57,11 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     final connectivity = Connectivity();
     final result = await connectivity.checkConnectivity();
-    // If result contains 'none', we are OFFLINE. So isOnline should be false.
-    isOnline = !result.contains(ConnectivityResult.none);
+    // Improved check: if it contains anything OTHER than none, we are online.
+    isOnline = result.any((r) => r != ConnectivityResult.none);
     
     _connectivitySub = connectivity.onConnectivityChanged.listen((result) {
-      final nextOnline = !result.contains(ConnectivityResult.none);
+      final nextOnline = result.any((r) => r != ConnectivityResult.none);
       if (nextOnline != isOnline) {
         isOnline = nextOnline;
         if (isOnline) {
@@ -80,15 +80,23 @@ class AppState extends ChangeNotifier {
   
   Future<void> syncAllData() async {
     if (!isOnline || user == null) return;
-    await refreshProjects(); // Get latest list
-    await syncEngine.syncAll(token: user!.token); // Push local changes
+    try {
+      await syncEngine.syncAll(token: user!.token); // Push local changes
+      await refreshProjects(); // Get latest list
+    } catch (e) {
+      debugPrint("syncAllData failed: $e");
+    }
   }
 
   Future<bool> login({
     required String username,
     required String password
   }) async {
-    if (!isOnline) return false;
+    debugPrint("Login attempt for $username (Online: $isOnline)");
+    if (!isOnline) {
+      debugPrint("Login aborted: Offline");
+      return false;
+    }
     try {
       final payload = await authApi.login(username: username, password: password);
       final userPayload = payload["user"] as Map<String, dynamic>;
@@ -104,7 +112,8 @@ class AppState extends ChangeNotifier {
       await syncAllData();
       notifyListeners();
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint("Login FAILED: $e");
       return false;
     }
   }

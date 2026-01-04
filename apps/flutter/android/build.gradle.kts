@@ -31,6 +31,8 @@ subprojects {
                 if (android.namespace == null) {
                     android.namespace = "dev.isar.isar_flutter_libs"
                 }
+                // Force compileSdk for legacy plugin builds (e.g., isar_flutter_libs).
+                android.compileSdkVersion(36)
             }
         }
     }

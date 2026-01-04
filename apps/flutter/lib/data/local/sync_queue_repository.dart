@@ -8,7 +8,7 @@ class SyncQueueRepository {
   final Isar isar;
 
   Future<List<SyncQueueItem>> getAll() async {
-    return isar.syncQueueItems.where().findAll();
+    return isar.syncQueueItems.where().sortByCreatedAt().findAll();
   }
 
   Future<void> add(SyncQueueItem item) async {
