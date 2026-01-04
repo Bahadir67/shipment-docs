@@ -244,13 +244,42 @@ async function findFolderId(drive, name, parentId) {
   return null;
 }
 
+async function deleteFolderIfEmpty(drive, folderId, rootId) {
+  if (!folderId || folderId === rootId) return;
+
+  try {
+    // Check if folder has any children (files or folders)
+    const res = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: "files(id)",
+      pageSize: 1
+    });
+
+    if (res.data.files.length === 0) {
+      // Get parent before deleting
+      const folderMeta = await drive.files.get({ fileId: folderId, fields: "parents" });
+      const parentId = folderMeta.data.parents ? folderMeta.data.parents[0] : null;
+
+      await drive.files.delete({ fileId: folderId });
+      console.log(`GDrive: Deleted empty parent folder: ${folderId}`);
+
+      // Recursively check the parent
+      if (parentId) {
+        await deleteFolderIfEmpty(drive, parentId, rootId);
+      }
+    }
+  } catch (e) {
+    console.warn(`GDrive cleanup skipped for ${folderId}:`, e.message);
+  }
+}
+
 async function deleteGDriveProductFolder({ year, customer, project, serial }) {
   const rootId = process.env.GDRIVE_FOLDER_ID;
   if (!rootId) return false;
   
   const drive = getDriveClient();
   
-  // Navigate Hierarchy
+  // Navigate Hierarchy to find IDs
   const yearId = await findFolderId(drive, year, rootId);
   if (!yearId) return false;
 
@@ -266,9 +295,13 @@ async function deleteGDriveProductFolder({ year, customer, project, serial }) {
     return false;
   }
 
-  // Delete the product folder
+  // 1. Delete the actual product (serial) folder
   await drive.files.delete({ fileId: productId });
-  console.log(`GDrive: Deleted folder '${serial}' (${productId}).`);
+  console.log(`GDrive: Deleted project folder '${serial}'.`);
+
+  // 2. Clean up parents if they are now empty
+  await deleteFolderIfEmpty(drive, projectId, rootId);
+  
   return true;
 }
 

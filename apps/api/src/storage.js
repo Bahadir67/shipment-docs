@@ -88,6 +88,27 @@ function getFileStream(filePath) {
   return fs.createReadStream(filePath);
 }
 
+function deleteEmptyLocalParents(dirPath, levels) {
+  if (levels <= 0) return;
+  try {
+    const parent = path.dirname(dirPath);
+    // Don't go above the storage root
+    const config = getStorageConfig();
+    const storageRoot = path.join(config.root, config.basePath);
+    
+    if (parent.length <= storageRoot.length) return;
+
+    const files = fs.readdirSync(parent);
+    if (files.length === 0) {
+      fs.rmdirSync(parent);
+      console.log(`Local: Deleted empty parent folder: ${parent}`);
+      deleteEmptyLocalParents(parent, levels - 1);
+    }
+  } catch (e) {
+    console.warn("Local parent cleanup skipped:", e.message);
+  }
+}
+
 async function deleteProductFolder({ year, customer, project, serial }) {
   const config = getStorageConfig();
   
@@ -104,7 +125,9 @@ async function deleteProductFolder({ year, customer, project, serial }) {
     console.log(`Storage Mode: Local. Attempting to delete folder: ${basePath}`);
     if (fs.existsSync(basePath)) {
       fs.rmSync(basePath, { recursive: true, force: true });
-      console.log("Folder deleted successfully.");
+      console.log("Folder deleted successfully. Cleaning up parents...");
+      // Max 4 levels up after serial folder: project -> customer -> year -> base
+      deleteEmptyLocalParents(basePath, 4);
     } else {
       console.log("Folder not found, skipping.");
     }
