@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node src/index.js",
     "start": "node src/index.js",
+    "build": "prisma generate && prisma db push --accept-data-loss",
     "prisma": "prisma",
     "db:push": "prisma db push",
     "db:generate": "prisma generate"
