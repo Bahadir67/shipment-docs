@@ -183,6 +183,9 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     if (appState.isOnline) {
       await appState.syncEngine.syncAll(token: appState.user?.token);
     }
+    
+    // Crucial: Update the state so the entire UI reflects the new mask
+    appState.notifyListeners();
     setState(() {});
   }
   // -----------------------
@@ -370,6 +373,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: ExpansionTile(
+                key: PageStorageKey("cat_$cat"), // Keep open/close state
                 backgroundColor: AppTheme.bgAccent,
                 collapsedBackgroundColor: AppTheme.bgAccent,
                 leading: Icon(
