@@ -23,11 +23,11 @@ class _HomeScreenState extends State<HomeScreen> {
     "Ayarlar"
   ];
 
-  final _pages = const [
-    DashboardTab(),
-    ProjectsTab(),
-    NewProjectTab(),
-    ProfileTab()
+  List<Widget> get _pages => [
+    const DashboardTab(),
+    const ProjectsTab(),
+    NewProjectTab(onCreated: () => setState(() => _index = 0)),
+    const ProfileTab()
   ];
 
   @override

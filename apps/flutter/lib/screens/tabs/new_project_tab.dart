@@ -5,7 +5,9 @@ import "../../data/models/checklist_item.dart";
 import "../../state/app_scope.dart";
 
 class NewProjectTab extends StatefulWidget {
-  const NewProjectTab({super.key});
+  const NewProjectTab({super.key, this.onCreated});
+
+  final VoidCallback? onCreated;
 
   @override
   State<NewProjectTab> createState() => _NewProjectTabState();
@@ -129,7 +131,7 @@ class _NewProjectTabState extends State<NewProjectTab> {
       _generateNextSerial(currentYear);
 
       // Navigate to Dashboard Tab (Index 0)
-      DefaultTabController.of(context).animateTo(0);
+      widget.onCreated?.call();
     }
     setState(() => _saving = false);
   }
