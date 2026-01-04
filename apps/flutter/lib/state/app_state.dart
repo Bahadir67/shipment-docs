@@ -71,6 +71,10 @@ class AppState extends ChangeNotifier {
       }
     });
     user = await userRepository.getCurrent();
+    if (user != null) {
+      authApi.client.updateToken(user!.token);
+    }
+    
     if (isOnline) {
       await syncAllData();
     }
@@ -101,6 +105,10 @@ class AppState extends ChangeNotifier {
       final payload = await authApi.login(username: username, password: password);
       final userPayload = payload["user"] as Map<String, dynamic>;
       final token = payload["token"] as String;
+      
+      // CRITICAL: Update token in client
+      authApi.client.updateToken(token);
+
       final profile = UserProfile(
         userId: userPayload["id"] as String,
         username: userPayload["username"] as String,

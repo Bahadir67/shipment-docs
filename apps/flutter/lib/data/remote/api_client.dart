@@ -16,4 +16,12 @@ class ApiClient {
   }
 
   late final Dio dio;
+
+  void updateToken(String? token) {
+    if (token != null && token.isNotEmpty) {
+      dio.options.headers["Authorization"] = "Bearer $token";
+    } else {
+      dio.options.headers.remove("Authorization");
+    }
+  }
 }

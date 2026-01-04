@@ -9,6 +9,7 @@ import "package:path_provider/path_provider.dart";
 import "../config/theme.dart";
 import "../config/checklist_definitions.dart";
 import "../data/models/file_item.dart";
+import "../data/models/sync_status.dart";
 import "../state/app_scope.dart";
 
 class ProjectDetailScreen extends StatefulWidget {
