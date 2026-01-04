@@ -81,6 +81,7 @@ class ProjectRepository {
           existing.status = item.status;
           existing.updatedAt = item.updatedAt;
           existing.syncStatus = SyncStatus.synced;
+          existing.checklistMask = item.checklistMask; // SYNC MASK
           // Do not overwrite detailsSynced status for existing projects
           await isar.projects.put(existing);
         } else {
