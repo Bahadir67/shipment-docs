@@ -78,11 +78,76 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
   
-  // ... (syncAllData remains same)
+  Future<void> syncAllData() async {
+    if (!isOnline || user == null) return;
+    await refreshProjects(); // Get latest list
+    await syncEngine.syncAll(token: user!.token); // Push local changes
+  }
 
-  // ... (login remains same)
+  Future<bool> login({
+    required String username,
+    required String password
+  }) async {
+    if (!isOnline) return false;
+    try {
+      final payload = await authApi.login(username: username, password: password);
+      final userPayload = payload["user"] as Map<String, dynamic>;
+      final token = payload["token"] as String;
+      final profile = UserProfile(
+        userId: userPayload["id"] as String,
+        username: userPayload["username"] as String,
+        role: userPayload["role"] as String,
+        token: token
+      );
+      await userRepository.save(profile);
+      user = profile;
+      await syncAllData();
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
-  // ... (refreshProjects remains same, but wait, we need to fix ProjectRepository separately)
+  Future<void> refreshProjects() async {
+    if (!isOnline || user?.token == null) {
+      debugPrint("refreshProjects: Skipped (offline or no user)");
+      return;
+    }
+    debugPrint("refreshProjects: Fetching from server...");
+    try {
+      final api = ProjectsApi(client: ApiClient(token: user!.token));
+      final response = await api.client.dio.get("/products"); // Use client directly to get raw response
+      debugPrint("refreshProjects: RAW RESPONSE: ${response.data}");
+
+      final data = (response.data["data"] as List<dynamic>? ?? []);
+      debugPrint("refreshProjects: Received ${data.length} projects from server.");
+      
+      final projects = data.map((entry) {
+        final e = entry as Map<String, dynamic>;
+        return Project(
+          serverId: e["id"] as String,
+          serial: e["serial"] as String,
+          customer: e["customer"] as String,
+          project: e["project"] as String,
+          productType: e["productType"] as String?,
+          year: e["year"] as int,
+          status: e["status"] as String? ?? "open",
+          checklistMask: e["checklistMask"] as String? ?? "00000000000000000000000000000000"
+        )..createdAt = DateTime.tryParse(e["createdAt"] as String? ?? "") ??
+            DateTime.now()
+         ..updatedAt = DateTime.tryParse(e["updatedAt"] as String? ?? "") ??
+            DateTime.now();
+      }).toList();
+
+      await projectRepository.upsertRemote(projects);
+      debugPrint("refreshProjects: Upserted ${projects.length} projects locally.");
+      notifyListeners(); // Force UI to rebuild with new projects
+    } catch (e, stack) {
+      debugPrint("refreshProjects: FAILED with error: $e");
+      debugPrint(stack.toString());
+    }
+  }
 
   Future<void> refreshProjectDetails(Project project) async {
     if (!isOnline || user?.token == null || project.serverId == null) return;
