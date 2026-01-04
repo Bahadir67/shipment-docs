@@ -20,6 +20,7 @@ class Project {
   @enumerated
   SyncStatus syncStatus;
   bool detailsSynced;
+  String checklistMask;
 
   Project({
     this.serverId,
@@ -31,5 +32,6 @@ class Project {
     this.status = "open",
     this.syncStatus = SyncStatus.pending,
     this.detailsSynced = false,
+    this.checklistMask = "00000000000000000000000000000000",
   });
 }

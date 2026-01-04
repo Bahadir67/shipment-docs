@@ -26,7 +26,8 @@ const {
   createLocalProductFolders,
   saveBufferToFile,
   saveThumbnailToFile,
-  getFileStream
+  getFileStream,
+  deleteProductFolder
 } = require("./storage");
 
 const app = express();
@@ -233,179 +234,15 @@ app.post("/products", requireAuth, async (req, res) => {
         productType: productType || null,
         year: parsedYear,
         status: "open",
-        onedriveFolder: storagePath
+        onedriveFolder: storagePath,
+        checklistMask: "00000000000000000000000000000000" // Init default
       }
     });
-
-    // Initialize default checklist for demo
-    const defaultItems = [
-      { category: "Visual", itemKey: "visual_inspection", label: "Gorsel Kontrol" },
-      { category: "Mechanical", itemKey: "oil_level_check", label: "Yag Seviyesi Kontrolu" },
-      { category: "Test", itemKey: "pressure_test", label: "Basinc Testi Tamam" },
-      { category: "Electrical", itemKey: "wiring_check", label: "Kablolama Kontrolu" },
-      { category: "Final", itemKey: "labels_attached", label: "Etiketler Takildi" },
-      { category: "Final", itemKey: "cleaning", label: "Son Temizlik" }
-    ];
-
-    await Promise.all(
-      defaultItems.map((item) =>
-        prisma.checklistItem.create({
-          data: {
-            productId: product.id,
-            category: item.category,
-            itemKey: item.itemKey,
-            completed: false
-          }
-        })
-      )
-    );
 
     return res.status(201).json(product);
   } catch (error) {
     console.error("Product create failed", error.message);
     return res.status(500).json({ error: "product_create_failed" });
-  }
-});
-
-app.get("/products/:id/checklist", requireAuth, async (req, res) => {
-  try {
-    const items = await prisma.checklistItem.findMany({
-      where: { productId: req.params.id },
-      orderBy: { category: "asc" }
-    });
-    return res.json({ data: items });
-  } catch (error) {
-    return res.status(500).json({ error: "checklist_fetch_failed" });
-  }
-});
-
-app.post("/products/:id/checklist", requireAuth, async (req, res) => {
-  const { itemKey, completed } = req.body || {};
-  if (!itemKey) return res.status(400).json({ error: "missing_item_key" });
-  try {
-    const updated = await prisma.checklistItem.update({
-      where: {
-        productId_category_itemKey: {
-          productId: req.params.id,
-          category: req.body.category, // Assuming category is passed or found
-          itemKey
-        }
-      },
-      data: {
-        completed: !!completed,
-        updatedAt: new Date()
-      }
-    });
-    return res.json(updated);
-  } catch (error) {
-    // If specific unique constraint update fails, try finding by productId and itemKey only
-    try {
-        const item = await prisma.checklistItem.findFirst({
-            where: { productId: req.params.id, itemKey }
-        });
-        if (item) {
-            const updated = await prisma.checklistItem.update({
-                where: { id: item.id },
-                data: { completed: !!completed, updatedAt: new Date() }
-            });
-            return res.json(updated);
-        }
-    } catch (e) {}
-    console.error("Checklist update failed", error.message);
-    return res.status(500).json({ error: "checklist_update_failed" });
-  }
-});
-
-app.get("/products/:id/files", requireAuth, async (req, res) => {
-  try {
-    const files = await prisma.file.findMany({
-      where: { productId: req.params.id },
-      orderBy: { createdAt: "desc" }
-    });
-    return res.json({ data: files });
-  } catch (error) {
-    return res.status(500).json({ error: "files_fetch_failed" });
-  }
-});
-
-app.get("/products/:id", requireAuth, async (req, res) => {
-  try {
-    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
-    if (!product) return res.status(404).json({ error: "product_not_found" });
-    return res.json(product);
-  } catch (error) {
-    console.error("Product fetch failed", error.message);
-    return res.status(500).json({ error: "product_fetch_failed" });
-  }
-});
-
-app.get("/products", requireAuth, async (req, res) => {
-  try {
-    const products = await prisma.product.findMany({ orderBy: { createdAt: "desc" } });
-    return res.json({ data: products });
-  } catch (error) {
-    console.error("Product list failed", error.message);
-    return res.status(500).json({ error: "product_list_failed" });
-  }
-});
-
-app.put("/products/:id", requireAuth, requireAdmin, async (req, res) => {
-  const { serial, customer, project, productType, year, status } = req.body || {};
-  const data = {};
-  if (serial) data.serial = serial;
-  if (customer) data.customer = customer;
-  if (project) data.project = project;
-  if (productType !== undefined) data.productType = productType || null;
-  if (year) data.year = Number(year);
-  if (status) data.status = status;
-  try {
-    const updated = await prisma.product.update({
-      where: { id: req.params.id },
-      data
-    });
-    return res.json(updated);
-  } catch (error) {
-    if (error.code === "P2025") {
-      return res.status(404).json({ error: "product_not_found" });
-    }
-    console.error("Product update failed", error.message);
-    return res.status(500).json({ error: "product_update_failed" });
-  }
-});
-
-app.delete("/products/:id", requireAuth, requireAdmin, async (req, res) => {
-  const hard = req.query.hard === "true";
-  try {
-    if (hard) {
-      // Fetch product first to get folder details
-      const product = await prisma.product.findUnique({ where: { id: req.params.id } });
-      if (product) {
-        // Delete physical folder
-        storage.deleteProductFolder({
-          year: product.year,
-          customer: product.customer,
-          project: product.project,
-          serial: product.serial
-        });
-      }
-
-      await prisma.file.deleteMany({ where: { productId: req.params.id } });
-      await prisma.checklistItem.deleteMany({ where: { productId: req.params.id } });
-      const deleted = await prisma.product.delete({ where: { id: req.params.id } });
-      return res.json(deleted);
-    } else {
-      const updated = await prisma.product.update({
-        where: { id: req.params.id },
-        data: { status: "deleted" }
-      });
-      return res.json(updated);
-    }
-  } catch (error) {
-    if (error.code === "P2025") {
-      return res.status(404).json({ error: "product_not_found" });
-    }
-    console.error("Product delete failed", error.message);
-    return res.status(500).json({ error: "product_delete_failed" });
   }
 });
 
@@ -512,6 +349,100 @@ app.post("/products/:id/files", requireAuth, upload.single("file"), async (req, 
   }
 });
 
+app.get("/products/:id/files", requireAuth, async (req, res) => {
+  try {
+    const files = await prisma.file.findMany({
+      where: { productId: req.params.id },
+      orderBy: { createdAt: "desc" }
+    });
+    return res.json({ data: files });
+  } catch (error) {
+    return res.status(500).json({ error: "files_fetch_failed" });
+  }
+});
+
+app.get("/products/:id", requireAuth, async (req, res) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!product) return res.status(404).json({ error: "product_not_found" });
+    return res.json(product);
+  } catch (error) {
+    console.error("Product fetch failed", error.message);
+    return res.status(500).json({ error: "product_fetch_failed" });
+  }
+});
+
+app.get("/products", requireAuth, async (req, res) => {
+  try {
+    const products = await prisma.product.findMany({ orderBy: { createdAt: "desc" } });
+    return res.json({ data: products });
+  } catch (error) {
+    console.error("Product list failed", error.message);
+    return res.status(500).json({ error: "product_list_failed" });
+  }
+});
+
+app.put("/products/:id", requireAuth, requireAdmin, async (req, res) => {
+  const { serial, customer, project, productType, year, status, checklistMask } = req.body || {};
+  const data = {};
+  if (serial) data.serial = serial;
+  if (customer) data.customer = customer;
+  if (project) data.project = project;
+  if (productType !== undefined) data.productType = productType || null;
+  if (year) data.year = Number(year);
+  if (status) data.status = status;
+  if (checklistMask) data.checklistMask = checklistMask;
+  try {
+    const updated = await prisma.product.update({
+      where: { id: req.params.id },
+      data
+    });
+    return res.json(updated);
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "product_not_found" });
+    }
+    console.error("Product update failed", error.message);
+    return res.status(500).json({ error: "product_update_failed" });
+  }
+});
+
+app.delete("/products/:id", requireAuth, requireAdmin, async (req, res) => {
+  const hard = req.query.hard === "true";
+  try {
+    if (hard) {
+      // Fetch product first to get folder details
+      const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+      if (product) {
+        // Delete physical folder
+        deleteProductFolder({
+          year: product.year,
+          customer: product.customer,
+          project: product.project,
+          serial: product.serial
+        });
+      }
+
+      await prisma.file.deleteMany({ where: { productId: req.params.id } });
+      // REMOVED: await prisma.checklistItem.deleteMany... (Table dropped)
+      const deleted = await prisma.product.delete({ where: { id: req.params.id } });
+      return res.json(deleted);
+    } else {
+      const updated = await prisma.product.update({
+        where: { id: req.params.id },
+        data: { status: "deleted" }
+      });
+      return res.json(updated);
+    }
+  } catch (error) {
+    if (error.code === "P2025") {
+      return res.status(404).json({ error: "product_not_found" });
+    }
+    console.error("Product delete failed", error.message);
+    return res.status(500).json({ error: "product_delete_failed" });
+  }
+});
+
 app.get("/products/:id/files/:fileId/view", requireAuth, async (req, res) => {
   const { id: productId, fileId } = req.params;
   let entry;
@@ -603,13 +534,13 @@ app.get("/products/:id/files/:fileId/download", requireAuth, requireAdmin, (req,
           "Content-Type",
           mime.lookup(file.fileUrl) || "application/octet-stream"
         );
-        res.setHeader("Content-Disposition", `attachment; filename=\"${file.fileId}\"`);
+        res.setHeader("Content-Disposition", `attachment; filename="${file.fileId}"`)
         return getFileStream(file.fileUrl).pipe(res);
       }
       if (storage.mode === "gdrive") {
         const download = await downloadGDriveFile({ fileId: file.fileId });
         res.setHeader("Content-Type", download.mimeType || "application/octet-stream");
-        res.setHeader("Content-Disposition", `attachment; filename=\"${download.name}\"`);
+        res.setHeader("Content-Disposition", `attachment; filename="${download.name}"`)
         return download.stream.pipe(res);
       }
       return res.status(501).json({ error: "storage_not_configured" });

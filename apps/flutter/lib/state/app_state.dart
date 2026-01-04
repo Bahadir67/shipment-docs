@@ -129,7 +129,8 @@ class AppState extends ChangeNotifier {
           project: e["project"] as String,
           productType: e["productType"] as String?,
           year: e["year"] as int,
-          status: e["status"] as String? ?? "open"
+          status: e["status"] as String? ?? "open",
+          checklistMask: e["checklistMask"] as String? ?? "00000000000000000000000000000000"
         )..createdAt = DateTime.tryParse(e["createdAt"] as String? ?? "") ??
             DateTime.now()
          ..updatedAt = DateTime.tryParse(e["updatedAt"] as String? ?? "") ??

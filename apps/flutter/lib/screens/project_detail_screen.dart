@@ -1,5 +1,4 @@
 import "dart:io";
-
 import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
 import "package:flutter_image_compress/flutter_image_compress.dart";
@@ -8,7 +7,7 @@ import "package:path/path.dart" as p;
 import "package:path_provider/path_provider.dart";
 
 import "../config/theme.dart";
-import "../data/models/checklist_item.dart";
+import "../config/checklist_definitions.dart";
 import "../data/models/file_item.dart";
 import "../state/app_scope.dart";
 
@@ -131,37 +130,62 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     setState(() {});
   }
 
-  Future<void> _toggleChecklist(ChecklistItem item, bool value) async {
+  // ---- Bitmask Logic ----
+  bool _isBitSet(String hexMask, int index) {
+    if (hexMask.isEmpty) return false;
+    try {
+      // Dart BigInt handles hex strings
+      final mask = BigInt.parse(hexMask, radix: 16);
+      final bit = BigInt.one << index;
+      return (mask & bit) != BigInt.zero;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _toggleBit(String hexMask, int index, bool value) {
+    try {
+      var mask = BigInt.tryParse(hexMask, radix: 16) ?? BigInt.zero;
+      final bit = BigInt.one << index;
+      if (value) {
+        mask = mask | bit;
+      } else {
+        mask = mask & ~bit;
+      }
+      // Return 32-char hex string (128 bits / 4)
+      // padLeft might need to be adjusted if BigInt.toRadixString doesn't output leading zeros
+      return mask.toRadixString(16).padLeft(32, '0');
+    } catch (_) {
+      return hexMask;
+    }
+  }
+
+  Future<void> _onChecklistToggle(int index, bool value) async {
     final appState = AppScope.of(context);
-    item.completed = value;
-    item.updatedAt = DateTime.now();
-    await appState.checklistRepository.save(item);
+    final project = appState.currentProject;
+    if (project == null) return;
+
+    final newMask = _toggleBit(project.checklistMask, index, value);
+    project.checklistMask = newMask;
+    
+    // Save to Local DB
+    await appState.projectRepository.save(project);
+    
+    // Enqueue Sync (Send only the mask)
     await appState.syncEngine.enqueue(
-      type: "checklist_update",
+      type: "project_update",
       payload: {
-        "localProjectId": item.projectId,
-        "itemKey": item.itemKey,
-        "category": item.category,
-        "completed": item.completed
+        "localProjectId": project.id,
+        "checklistMask": newMask
       }
     );
+
     if (appState.isOnline) {
       await appState.syncEngine.syncAll(token: appState.user?.token);
     }
     setState(() {});
   }
-
-  // Helper to Group Checklist Items
-  Map<String, List<ChecklistItem>> _groupItems(List<ChecklistItem> items) {
-    final groups = <String, List<ChecklistItem>>{};
-    for (var item in items) {
-      if (!groups.containsKey(item.category)) {
-        groups[item.category] = [];
-      }
-      groups[item.category]!.add(item);
-    }
-    return groups;
-  }
+  // -----------------------
 
   Future<void> _deleteProject() async {
     final confirmed = await showDialog<bool>(
@@ -204,7 +228,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
     if (mounted) {
       Navigator.pop(context); // Close detail screen
-      appState.notifyListeners(); // Force dashboard refresh
+      appState.notifyListeners();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Proje silindi.")));
     }
   }
@@ -274,64 +298,13 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
             const SizedBox(height: 24),
 
-            // Accordion Checklist
+            // Bitmask Checklist
             const Text(
               "QC Kontrol Listesi",
               style: TextStyle(color: AppTheme.paper, fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-            FutureBuilder<List<ChecklistItem>>(
-              future: appState.checklistRepository.listByProject(project.id),
-              builder: (context, snapshot) {
-                final items = snapshot.data ?? [];
-                if (items.isEmpty) return const Text("Checklist yok.", style: TextStyle(color: Colors.white54));
-                
-                final grouped = _groupItems(items);
-                // Sort keys to maintain order: MEKANIK, HIDROLIK, ELEKTRIK
-                final keys = grouped.keys.toList()..sort((a, b) {
-                  // Custom sort if needed, simple alpha otherwise
-                  // Let's force specific order
-                  final order = {"MEKANIK": 1, "HIDROLIK": 2, "ELEKTRIK": 3};
-                  return (order[a] ?? 99).compareTo(order[b] ?? 99);
-                });
-
-                return Column(
-                  children: keys.map((cat) {
-                    final catItems = grouped[cat]!;
-                    final completedCount = catItems.where((i) => i.completed).length;
-                    final totalCount = catItems.length;
-                    final isDone = completedCount == totalCount;
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Theme(
-                        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: ExpansionTile(
-                            backgroundColor: AppTheme.bgAccent,
-                            collapsedBackgroundColor: AppTheme.bgAccent,
-                            leading: Icon(
-                              isDone ? Icons.check_circle : Icons.pending_actions,
-                              color: isDone ? Colors.greenAccent : AppTheme.accent,
-                            ),
-                            title: Text(cat, style: const TextStyle(color: AppTheme.paper, fontWeight: FontWeight.bold)),
-                            subtitle: Text("$completedCount / $totalCount tamamlandi", style: TextStyle(color: AppTheme.paper.withOpacity(0.6), fontSize: 12)),
-                            children: catItems.map((item) => CheckboxListTile(
-                              title: Text(item.itemKey, style: const TextStyle(fontSize: 14, color: AppTheme.paper)),
-                              value: item.completed,
-                              activeColor: AppTheme.accent,
-                              checkColor: AppTheme.ink,
-                              onChanged: (v) => _toggleChecklist(item, v ?? false),
-                            )).toList(),
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
+            _buildChecklist(project),
 
             const SizedBox(height: 24),
 
@@ -364,6 +337,59 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildChecklist(dynamic project) {
+    // Group definitions by category
+    final groups = <String, List<ChecklistDefinition>>{};
+    for (var def in ChecklistDefinitions.items) {
+      if (!groups.containsKey(def.category)) {
+        groups[def.category] = [];
+      }
+      groups[def.category]!.add(def);
+    }
+    
+    return Column(
+      children: groups.keys.map((cat) {
+        final items = groups[cat]!;
+        // Calculate completion based on current mask
+        int doneCount = 0;
+        for (var item in items) {
+          if (_isBitSet(project.checklistMask, item.index)) doneCount++;
+        }
+        final isDone = doneCount == items.length;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: ExpansionTile(
+                backgroundColor: AppTheme.bgAccent,
+                collapsedBackgroundColor: AppTheme.bgAccent,
+                leading: Icon(
+                  isDone ? Icons.check_circle : Icons.pending_actions,
+                  color: isDone ? Colors.greenAccent : AppTheme.accent,
+                ),
+                title: Text(cat, style: const TextStyle(color: AppTheme.paper, fontWeight: FontWeight.bold)),
+                subtitle: Text("$doneCount / ${items.length} tamamlandi", style: TextStyle(color: AppTheme.paper.withOpacity(0.6), fontSize: 12)),
+                children: items.map((def) {
+                  final checked = _isBitSet(project.checklistMask, def.index);
+                  return CheckboxListTile(
+                    title: Text(def.label, style: const TextStyle(fontSize: 14, color: AppTheme.paper)),
+                    value: checked,
+                    activeColor: AppTheme.accent,
+                    checkColor: AppTheme.ink,
+                    onChanged: (v) => _onChecklistToggle(def.index, v ?? false),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

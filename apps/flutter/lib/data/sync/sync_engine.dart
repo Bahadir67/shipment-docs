@@ -127,19 +127,18 @@ class SyncEngine {
             }
           }
           return true;
-        case "checklist_update":
-          final localProjectId = data["localProjectId"] as int?;
-          final project = localProjectId == null
-              ? null
-              : await projectRepository.getById(localProjectId);
-          final projectServerId = project?.serverId;
-          if (projectServerId == null) return false;
-          await client.dio.post(
-            "/products/$projectServerId/checklist",
+        case "project_update":
+          final localId = data["localProjectId"] as int?;
+          if (localId == null) return true;
+          final project = await projectRepository.getById(localId);
+          final serverId = project?.serverId;
+          if (serverId == null) return false;
+          
+          await client.dio.put(
+            "/products/$serverId",
             data: {
-              "itemKey": data["itemKey"],
-              "category": data["category"],
-              "completed": data["completed"]
+              if (data["checklistMask"] != null) "checklistMask": data["checklistMask"],
+              // Add other updateable fields here if needed
             }
           );
           return true;

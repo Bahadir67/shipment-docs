@@ -27,36 +27,29 @@ model Product {
   productType    String?
   year           Int
   onedriveFolder String?
-  status         String   @default("open")
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now())
-  files          File[]
-  checklist      ChecklistItem[]
+  status       String   @default("open") // open, completed, deleted
+  checklistMask String  @default("00000000000000000000000000000000") // 128-bit hex string (32 chars)
+  
+  files        File[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@unique([year, serial])
 }
 
 model File {
-  id        String   @id @default(uuid())
-  productId String?
-  type      String
-  category  String?
-  fileId    String
-  fileUrl   String?
-  thumbnailId  String?
+  id          String   @id @default(uuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type        String   // photo, document
+  category    String?  // onden, sagdan...
+  fileId      String
+  fileUrl     String?  // Remote URL if needed
+  thumbnailId String?
   thumbnailUrl String?
-  createdAt DateTime @default(now())
-  product   Product? @relation(fields: [productId], references: [id])
-}
-
-model ChecklistItem {
-  id        String   @id @default(uuid())
-  productId String
-  category  String
-  itemKey   String
-  completed Boolean  @default(false)
-  updatedAt DateTime @default(now())
-  product   Product  @relation(fields: [productId], references: [id])
-
-  @@unique([productId, category, itemKey])
+  
+  createdAt   DateTime @default(now())
 }
 
 model ViewLog {
