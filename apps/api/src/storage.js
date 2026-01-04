@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const gdrive = require("./gdrive");
 
 function sanitizeSegment(value) {
   return String(value || "")
@@ -87,14 +88,26 @@ function getFileStream(filePath) {
   return fs.createReadStream(filePath);
 }
 
-function deleteProductFolder({ year, customer, project, serial }) {
-  const basePath = buildProductPath({ year, customer, project, serial });
-  console.log(`Attempting to delete folder: ${basePath}`);
-  if (fs.existsSync(basePath)) {
-    fs.rmSync(basePath, { recursive: true, force: true });
-    console.log("Folder deleted successfully.");
+async function deleteProductFolder({ year, customer, project, serial }) {
+  const config = getStorageConfig();
+  
+  if (config.mode === "gdrive") {
+    console.log(`Storage Mode: GDrive. Deleting folder for ${serial}...`);
+    try {
+      await gdrive.deleteGDriveProductFolder({ year, customer, project, serial });
+    } catch (e) {
+      console.error("GDrive delete failed:", e.message);
+    }
   } else {
-    console.log("Folder not found, skipping.");
+    // Local Mode
+    const basePath = buildProductPath({ year, customer, project, serial });
+    console.log(`Storage Mode: Local. Attempting to delete folder: ${basePath}`);
+    if (fs.existsSync(basePath)) {
+      fs.rmSync(basePath, { recursive: true, force: true });
+      console.log("Folder deleted successfully.");
+    } else {
+      console.log("Folder not found, skipping.");
+    }
   }
 }
 

@@ -226,10 +226,57 @@ async function downloadGDriveFile({ fileId }) {
   };
 }
 
+async function findFolderId(drive, name, parentId) {
+  const safeName = sanitizeName(name);
+  const query = [
+    `'${parentId}' in parents`,
+    `name='${safeName}'`,
+    "mimeType='application/vnd.google-apps.folder'",
+    "trashed=false"
+  ].join(" and ");
+  const list = await drive.files.list({
+    q: query,
+    fields: "files(id,name)"
+  });
+  if (list.data.files && list.data.files.length) {
+    return list.data.files[0].id;
+  }
+  return null;
+}
+
+async function deleteGDriveProductFolder({ year, customer, project, serial }) {
+  const rootId = process.env.GDRIVE_FOLDER_ID;
+  if (!rootId) return false;
+  
+  const drive = getDriveClient();
+  
+  // Navigate Hierarchy
+  const yearId = await findFolderId(drive, year, rootId);
+  if (!yearId) return false;
+
+  const customerId = await findFolderId(drive, customer, yearId);
+  if (!customerId) return false;
+
+  const projectId = await findFolderId(drive, project, customerId);
+  if (!projectId) return false;
+
+  const productId = await findFolderId(drive, serial, projectId);
+  if (!productId) {
+    console.log(`GDrive: Product folder '${serial}' not found.`);
+    return false;
+  }
+
+  // Delete the product folder
+  await drive.files.delete({ fileId: productId });
+  console.log(`GDrive: Deleted folder '${serial}' (${productId}).`);
+  return true;
+}
+
 module.exports = {
   getOAuthClient,
   createGDriveProductFolder,
   uploadGDriveFile,
   uploadGDriveThumbnail,
-  downloadGDriveFile
+  downloadGDriveFile,
+  deleteGDriveProductFolder
 };
