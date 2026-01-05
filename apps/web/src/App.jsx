@@ -20,8 +20,40 @@ const PHOTO_SLOTS = [
   { id: "general", label: "Genel", key: "genel" }
 ];
 
+const TABS = [
+  { id: "photos", label: "Fotograflar" },
+  { id: "checklist", label: "Kontrol Listesi" },
+  { id: "docs", label: "Dokumanlar" },
+  { id: "notes", label: "Notlar" }
+];
+
+function Lightbox({ src, alt, onClose, onDelete, isAdmin }) {
+  if (!src) return null;
+  return (
+    <div className="lightbox-overlay" onClick={onClose}>
+      <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
+        <img src={src} alt={alt} />
+        <button className="lightbox-close" onClick={onClose}>
+          <span className="material-icons-round">close</span>
+        </button>
+        {isAdmin && onDelete && (
+          <button className="lightbox-delete" onClick={() => {
+             if(confirm("Bu fotografi silmek istediginizden emin misiniz?")) {
+               onDelete();
+             }
+          }}>
+            <span className="material-icons-round">delete</span>
+            Sil
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("photos");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState({ type: "", message: "" });
@@ -63,6 +95,8 @@ export default function App() {
     productType: "",
     year: ""
   });
+  const [lightboxFile, setLightboxFile] = useState(null);
+
   const apiBase = import.meta.env.VITE_API_URL || "http://localhost:3000";
   const tokenKey = "shipment_docs_token";
   const pendingProductsKey = "shipment_docs_pending_products";
@@ -76,16 +110,25 @@ export default function App() {
 
   const isAdmin = user?.role === "admin";
   const hasAccess = !!user || !isOnline;
-  const findSlotFile = (slot, files) =>
-    files.find((file) => {
+  
+  const findSlotFile = (slot, files) => {
+    // Sort to find the NEWEST file first
+    const sorted = [...files].sort((a, b) => {
+        const dateA = new Date(a.createdAt || 0);
+        const dateB = new Date(b.createdAt || 0);
+        return dateB - dateA;
+    });
+    
+    return sorted.find((file) => {
       const name = (file.fileName || "").toLowerCase();
       const category = (file.category || "").toLowerCase();
-      return (
+      // Strict match for type=photo
+      return file.type === "photo" && (
         name.includes(slot.key) ||
-        category === slot.label.toLowerCase() ||
-        category.includes(slot.key)
+        category === slot.label.toLowerCase()
       );
     });
+  };
 
   const fetchChecklist = async (token, productId) => {
     try {
@@ -368,7 +411,7 @@ export default function App() {
       }
       const payload = await response.json();
       setUser(payload);
-      localStorage.setItem(lastUserKey, JSON.stringify(payload));
+      localStorage.setItem(lastUserKey, JSON.stringify(payload.user));
       fetchProducts(token);
     } catch (error) {
       setStatus({ type: "error", message: "Oturum geri yuklenemedi." });
@@ -613,15 +656,17 @@ export default function App() {
 
     // Generate new filename
     const ext = file.name.split(".").pop();
-    const fileName = `${slot.key}.${ext}`;
+    const timestamp = Date.now();
+    const fileName = `${slot.key}_${timestamp}.${ext}`;
 
     // Create optimistic file object for immediate preview
     const previewUrl = URL.createObjectURL(file);
     const optimisticFile = {
-      id: `temp-${Date.now()}`,
+      id: `temp-${timestamp}`,
       type: "photo",
       fileName: fileName,
       fileUrl: previewUrl, // Local preview URL
+      category: slot.label,
       createdAt: new Date().toISOString()
     };
 
@@ -866,6 +911,13 @@ export default function App() {
     }
   };
 
+  const handleDeleteFile = async (fileId) => {
+    if(!confirm("Bu dosyayi silmek istediginizden emin misiniz?")) return;
+    setProjectFiles(prev => prev.filter(f => f.id !== fileId));
+    setLightboxFile(null);
+    // TODO: Call API endpoint to delete if available
+  };
+
   const handleInstallClick = async () => {
     if (!installPrompt) return;
     try {
@@ -876,6 +928,7 @@ export default function App() {
     }
   };
 
+  // ... (useEffects) ...
   useEffect(() => {
     const storedToken = localStorage.getItem(tokenKey);
     const storedUser = localStorage.getItem(lastUserKey);
@@ -997,6 +1050,13 @@ export default function App() {
 
   return (
     <div className="app">
+      <Lightbox 
+        src={lightboxFile?.url} 
+        alt={lightboxFile?.title} 
+        onClose={() => setLightboxFile(null)} 
+        isAdmin={isAdmin}
+        onDelete={lightboxFile?.id ? () => handleDeleteFile(lightboxFile.id) : undefined}
+      />
       <aside className="nav">
         <div className="brand">
           <span className="brand-mark">SD</span>
@@ -1087,6 +1147,21 @@ export default function App() {
             </div>
           </section>
         ) : null}
+
+        {/* --- TABS --- */}
+        {currentProject && hasAccess && activePage === "uploads" && (
+          <div className="tabs">
+            {TABS.map(tab => (
+              <button 
+                key={tab.id}
+                className={activeTab === tab.id ? "active" : ""}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {!hasAccess ? (
           <section className="panel">
@@ -1325,164 +1400,186 @@ export default function App() {
 
         {hasAccess && activePage === "uploads" ? (
           <section className="grid detay-grid">
-            <div className="panel">
-              <h2>Kontrol Listesi</h2>
-              {!currentProject ? <p className="hint">Once proje secin.</p> : null}
-              <ul className="checklist">
-                {checklist.map((item) => (
-                  <li key={item.id} className={item.completed ? "done" : ""}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={item.completed}
-                        onChange={() => toggleChecklistItem(item)}
-                      />
-                      <span>{item.itemKey.replace(/_/g, " ").toUpperCase()}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-              {currentProject && checklist.length === 0 && <p className="hint">Liste yukleniyor veya bos...</p>}
-            </div>
-
-            <div className="panel">
-              <h2>Fotograflar</h2>
-              {!currentProject ? <p className="hint">Once Projeler menuden bir proje secin.</p> : (
-                <div className="photo-grid-container">
-                  {PHOTO_SLOTS.map((slot) => {
-                    // Find uploaded file that matches this slot key (check for timestamp prefix too)
-                    // Matches: "onden.jpg", "123456_onden.jpg", "onden_old.png"
-                    const existingFile = findSlotFile(slot, projectFiles);
-
-                    // Use local slot preview first, then cached thumbnail preview
-                    const displayUrl =
-                      slotPreviews[slot.key] ||
-                      photoPreviews[existingFile?.id] ||
-                      (existingFile?.fileUrl?.startsWith("blob:") ? existingFile.fileUrl : null);
-                    const isLoadingPreview = !!existingFile && !displayUrl;
-
-                    return (
-                      <label key={slot.id} className={`photo-slot ${existingFile ? "has-photo" : ""}`}>
+            
+            {activeTab === "checklist" && (
+              <div className="panel">
+                <h2>Kontrol Listesi</h2>
+                {!currentProject ? <p className="hint">Once proje secin.</p> : null}
+                <ul className="checklist">
+                  {checklist.map((item) => (
+                    <li key={item.id} className={item.completed ? "done" : ""}>
+                      <label>
                         <input
-                           type="file"
-                           className="visually-hidden"
-                           accept="image/*"
-                           capture="environment"
-                           onChange={(e) => handleGridFileSelect(slot, e)}
+                          type="checkbox"
+                          checked={item.completed}
+                          onChange={() => toggleChecklistItem(item)}
                         />
-                        {existingFile && displayUrl ? (
-                          <>
-                            <img src={displayUrl} alt={slot.label} />
-                            <div className="slot-overlay">
-                              <span className="material-icons-round">photo_camera</span>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="slot-content">
-                            <span className="slot-icon">photo_camera</span>
-                            <span className="slot-label">
-                              {isLoadingPreview ? "Yukleniyor..." : slot.label}
-                            </span>
-                          </div>
-                        )}
+                        <span>{item.itemKey.replace(/_/g, " ").toUpperCase()}</span>
                       </label>
-                    );
-                  })}
-                </div>
-              )}
+                    </li>
+                  ))}
+                </ul>
+                {currentProject && checklist.length === 0 && <p className="hint">Liste yukleniyor veya bos...</p>}
+              </div>
+            )}
 
-              <h2>Diger Dosyalar</h2>
-              {!currentProject ? (
-                <p className="hint">Once Projeler menuden bir proje secin.</p>
-              ) : null}
-              <form className="form upload-grid" onSubmit={handleUpload}>
-                <label>
-                  Dosya tipi
-                  <select value={uploadForm.type} onChange={handleUploadChange("type")}>
-                    <option value="test_report">Test raporu</option>
-                    <option value="label">Etiket (PDF vb)</option>
-                    <option value="project_file">Proje dosyasi</option>
-                    <option value="photo">Diger Foto</option>
-                  </select>
-                </label>
-                {uploadForm.type === "project_file" ? (
+            {activeTab === "photos" && (
+              <div className="panel">
+                <h2>Fotograflar</h2>
+                {!currentProject ? <p className="hint">Once Projeler menuden bir proje secin.</p> : (
+                  <div className="photo-grid-container">
+                    {PHOTO_SLOTS.map((slot) => {
+                      const existingFile = findSlotFile(slot, projectFiles);
+                      const displayUrl =
+                        slotPreviews[slot.key] ||
+                        photoPreviews[existingFile?.id] ||
+                        (existingFile?.fileUrl?.startsWith("blob:") ? existingFile.fileUrl : null);
+                      const isLoadingPreview = !!existingFile && !displayUrl;
+
+                      return (
+                        <label key={slot.id} className={`photo-slot ${existingFile ? "has-photo" : ""}`}
+                          onClick={(e) => {
+                            if(existingFile && displayUrl) {
+                              e.preventDefault();
+                              // Open Lightbox
+                              setLightboxFile({ url: displayUrl, title: slot.label, id: existingFile.id });
+                            }
+                          }}
+                        >
+                          <input
+                             type="file"
+                             className="visually-hidden"
+                             accept="image/*"
+                             capture="environment"
+                             onChange={(e) => handleGridFileSelect(slot, e)}
+                             disabled={!!existingFile}
+                          />
+                          {existingFile && displayUrl ? (
+                            <>
+                              <img src={displayUrl} alt={slot.label} />
+                              <div className="slot-overlay">
+                                <span className="material-icons-round">visibility</span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="slot-content">
+                              <span className="slot-icon">photo_camera</span>
+                              <span className="slot-label">
+                                {isLoadingPreview ? "Yukleniyor..." : slot.label}
+                              </span>
+                            </div>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "docs" && (
+              <div className="panel">
+                <h2>Diger Dosyalar</h2>
+                {!currentProject ? (
+                  <p className="hint">Once Projeler menuden bir proje secin.</p>
+                ) : null}
+                <form className="form upload-grid" onSubmit={handleUpload}>
                   <label>
-                    Proje kategorisi
-                    <select value={uploadForm.category} onChange={handleUploadChange("category")}>
-                      <option value="Drawings">Cizimler</option>
-                      <option value="Hydraulic">Hidrolik</option>
-                      <option value="Electrical">Elektrik</option>
-                      <option value="Software">Yazilim</option>
+                    Dosya tipi
+                    <select value={uploadForm.type} onChange={handleUploadChange("type")}>
+                      <option value="test_report">Test raporu</option>
+                      <option value="label">Etiket (PDF vb)</option>
+                      <option value="project_file">Proje dosyasi</option>
+                      <option value="photo">Diger Foto</option>
                     </select>
                   </label>
+                  {uploadForm.type === "project_file" ? (
+                    <label>
+                      Proje kategorisi
+                      <select value={uploadForm.category} onChange={handleUploadChange("category")}>
+                        <option value="Drawings">Cizimler</option>
+                        <option value="Hydraulic">Hidrolik</option>
+                        <option value="Electrical">Elektrik</option>
+                        <option value="Software">Yazilim</option>
+                      </select>
+                    </label>
+                  ) : null}
+                  <div className="file-input-group">
+                    <span className="input-label">Dosya sec</span>
+                    <label className={`file-drop-zone ${uploadForm.files.length ? "has-files" : ""}`}>
+                      <input
+                        type="file"
+                        className="visually-hidden"
+                        accept={uploadForm.type === "photo" ? "image/*" : "*/*"}
+                        capture={uploadForm.type === "photo" ? "environment" : undefined}
+                        multiple
+                        onChange={handleUploadChange("files")}
+                      />
+                      <div className="drop-content">
+                        <span className="drop-icon">{uploadForm.files.length ? "check_circle" : "cloud_upload"}</span>
+                        <span className="drop-text">
+                          {uploadForm.files.length > 0
+                            ? `${uploadForm.files.length} dosya hazir`
+                            : "Dosyalari secin veya buraya birakin"}
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                  <button type="submit">Yukle</button>
+                </form>
+                {uploadStatus.message ? (
+                  <div className={`status-chip ${uploadStatus.type}`}>{uploadStatus.message}</div>
                 ) : null}
-                <div className="file-input-group">
-                  <span className="input-label">Dosya sec</span>
-                  <label className={`file-drop-zone ${uploadForm.files.length ? "has-files" : ""}`}>
-                    <input
-                      type="file"
-                      className="visually-hidden"
-                      accept={uploadForm.type === "photo" ? "image/*" : "*/*"}
-                      capture={uploadForm.type === "photo" ? "environment" : undefined}
-                      multiple
-                      onChange={handleUploadChange("files")}
-                    />
-                    <div className="drop-content">
-                      <span className="drop-icon">{uploadForm.files.length ? "check_circle" : "cloud_upload"}</span>
-                      <span className="drop-text">
-                        {uploadForm.files.length > 0
-                          ? `${uploadForm.files.length} dosya hazir`
-                          : "Dosyalari secin veya buraya birakin"}
-                      </span>
-                    </div>
-                  </label>
-                </div>
-                <button type="submit">Yukle</button>
-              </form>
-              {uploadStatus.message ? (
-                <div className={`status-chip ${uploadStatus.type}`}>{uploadStatus.message}</div>
-              ) : null}
-            </div>
 
-            <div className="panel">
-              <h2>Yuklenen Dosyalar</h2>
-              <ul className="list file-list">
-                {projectFiles.map((file) => (
-                  <li key={file.id}>
-                    <div>
-                      <strong>{file.type.toUpperCase()}</strong>
-                      <span>{file.fileName}</span>
-                    </div>
-                    <a
-                      href={file.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="button ghost"
-                    >
-                      Goruntule
-                    </a>
-                  </li>
-                ))}
-                {projectFiles.length === 0 && <p className="hint">Henuz dosya yuklenmemis.</p>}
-              </ul>
-            </div>
+                <hr style={{margin: '24px 0', borderColor: 'var(--line)', opacity: 0.3}} />
 
-            <div className="panel">
-              <h3>Proje Notlari</h3>
-              <textarea
-                placeholder="Proje notlarini ekleyin..."
-                value={noteText}
-                onChange={(event) => setNoteText(event.target.value)}
-              />
-              <div className="row-actions">
-                <button type="button" onClick={handleSaveNote}>
-                  Notu kaydet
-                </button>
-                {noteStatus.message ? (
-                  <span className={`status-chip ${noteStatus.type}`}>{noteStatus.message}</span>
-                ) : null}
+                <h2>Yuklenen Dosyalar</h2>
+                <ul className="list file-list">
+                  {projectFiles.map((file) => (
+                    <li key={file.id}>
+                      <div>
+                        <strong>{file.type.toUpperCase()}</strong>
+                        <span>{file.fileName}</span>
+                      </div>
+                      <a
+                        href={file.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="button ghost"
+                        onClick={(e) => {
+                           if(!file.fileUrl) {
+                             e.preventDefault();
+                             alert("Dosya linki henuz hazir degil.");
+                           }
+                        }}
+                      >
+                        Goruntule
+                      </a>
+                    </li>
+                  ))}
+                  {projectFiles.length === 0 && <p className="hint">Henuz dosya yuklenmemis.</p>}
+                </ul>
               </div>
-            </div>
+            )}
+
+            {activeTab === "notes" && (
+              <div className="panel">
+                <h3>Proje Notlari</h3>
+                <textarea
+                  placeholder="Proje notlarini ekleyin..."
+                  value={noteText}
+                  onChange={(event) => setNoteText(event.target.value)}
+                />
+                <div className="row-actions">
+                  <button type="button" onClick={handleSaveNote}>
+                    Notu kaydet
+                  </button>
+                  {noteStatus.message ? (
+                    <span className={`status-chip ${noteStatus.type}`}>{noteStatus.message}</span>
+                  ) : null}
+                </div>
+              </div>
+            )}
           </section>
         ) : null}
       </main>

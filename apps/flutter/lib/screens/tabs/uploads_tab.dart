@@ -81,10 +81,11 @@ class _UploadsTabState extends State<UploadsTab> {
     }
     final projectDir = await _resolveProjectDir(project.id);
     final ext = p.extension(picked.path).isEmpty ? ".jpg" : p.extension(picked.path);
-    final fileName = "${slot["key"]}$ext";
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final fileName = "${slot["key"]}_$timestamp$ext";
     final targetPath = p.join(projectDir, fileName);
     await File(picked.path).copy(targetPath);
-    final thumbPath = p.join(projectDir, "thumb_${slot["key"]}.jpg");
+    final thumbPath = p.join(projectDir, "thumb_${slot["key"]}_$timestamp.jpg");
     final thumb = await _createThumbnail(targetPath, thumbPath);
 
     final fileItem = FileItem(
@@ -155,14 +156,17 @@ class _UploadsTabState extends State<UploadsTab> {
   FileItem? _matchSlot(List<FileItem> items, Map<String, String> slot) {
     final key = slot["key"]!;
     final label = slot["label"]!.toLowerCase();
+    FileItem? best;
     for (final item in items) {
       final name = item.fileName.toLowerCase();
       final category = (item.category ?? "").toLowerCase();
       if (name.contains(key) || category == label) {
-        return item;
+        if (best == null || item.createdAt.isAfter(best.createdAt)) {
+          best = item;
+        }
       }
     }
-    return null;
+    return best;
   }
 
   @override

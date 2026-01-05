@@ -48,11 +48,10 @@ class FileRepository {
   Future<void> upsertRemote({required int projectId, required List<FileItem> items}) async {
     await isar.writeTxn(() async {
       for (final remote in items) {
-        // Find existing local file for this project by category or serverId
-        FileItem? existing;
-        
+        // 1. Try to find by unique Server ID
+        FileItem? match;
         if (remote.serverId != null) {
-          existing = await isar.fileItems
+          match = await isar.fileItems
               .filter()
               .projectIdEqualTo(projectId)
               .and()
@@ -60,26 +59,50 @@ class FileRepository {
               .findFirst();
         }
 
-        // If not found by serverId, try matching by category (for photos taken offline)
-        if (existing == null && remote.category != null) {
-          existing = await isar.fileItems
+        // 2. If not found, try to find by Category (Logic: One photo per category)
+        if (match == null && remote.category != null && remote.type == "photo") {
+          final candidates = await isar.fileItems
               .filter()
               .projectIdEqualTo(projectId)
               .and()
               .categoryEqualTo(remote.category)
+              .findAll();
+          
+          if (candidates.isNotEmpty) {
+            match = candidates.first;
+            // CLEANUP: If there are multiple local files for this category, delete duplicates!
+            if (candidates.length > 1) {
+              for (int i = 1; i < candidates.length; i++) {
+                await isar.fileItems.delete(candidates[i].id);
+              }
+            }
+          }
+        }
+
+        // 3. If not found, try matching by FileName (Last resort)
+        if (match == null) {
+           match = await isar.fileItems
+              .filter()
+              .projectIdEqualTo(projectId)
+              .and()
+              .fileNameEqualTo(remote.fileName)
               .findFirst();
         }
 
-        if (existing != null) {
-          // UPDATE: Preserve local path while updating server info
-          existing.serverId = remote.serverId;
-          existing.serverUrl = remote.serverUrl;
-          existing.thumbnailId = remote.thumbnailId;
-          existing.thumbnailUrl = remote.thumbnailUrl;
-          // Keep localPath and thumbnailPath as they are on this specific device
-          await isar.fileItems.put(existing);
+        if (match != null) {
+          // UPDATE
+          match.serverId = remote.serverId;
+          match.serverUrl = remote.serverUrl;
+          match.thumbnailId = remote.thumbnailId;
+          match.thumbnailUrl = remote.thumbnailUrl;
+          // IMPORTANT: If remote has a different filename (e.g. renamed on server), update it?
+          // For now, trust remote filename as source of truth if it has ID
+          if (remote.serverId != null) {
+             match.fileName = remote.fileName;
+          }
+          await isar.fileItems.put(match);
         } else {
-          // INSERT: New file from remote that doesn't exist here
+          // INSERT
           await isar.fileItems.put(remote);
         }
       }

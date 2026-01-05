@@ -1,3 +1,4 @@
+import "dart:async";
 import "dart:io";
 import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
@@ -12,6 +13,8 @@ import "../data/models/file_item.dart";
 import "../data/models/sync_status.dart";
 import "../state/app_scope.dart";
 
+import "../state/app_state.dart";
+
 class ProjectDetailScreen extends StatefulWidget {
   const ProjectDetailScreen({super.key});
 
@@ -22,6 +25,8 @@ class ProjectDetailScreen extends StatefulWidget {
 class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
   final _picker = ImagePicker();
   bool _loading = false;
+  Timer? _debounceTimer;
+  late AppState _appState;
 
   static const _photoSlots = [
     {"key": "onden", "label": "Onden"},
@@ -31,6 +36,49 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     {"key": "etiket", "label": "Etiket"},
     {"key": "genel", "label": "Genel"}
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pullProjectData();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appState = AppScope.of(context);
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _appState.syncEngine.syncAll(token: _appState.user?.token);
+    super.dispose();
+  }
+
+  Future<void> _pullProjectData() async {
+    final project = _appState.currentProject;
+    if (project == null || !_appState.isOnline) return;
+
+    setState(() => _loading = true);
+    await _appState.syncEngine.syncAll(token: _appState.user?.token);
+    setState(() => _loading = false);
+  }
+
+  void _scheduleAutoSync() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(seconds: 5), () {
+      _forceSync();
+    });
+  }
+
+  Future<void> _forceSync() async {
+    if (_appState.isOnline) {
+      await _appState.syncEngine.syncAll(token: _appState.user?.token);
+    }
+  }
 
   Future<String> _resolveProjectDir(int projectId) async {
     if (kIsWeb) return "";
@@ -55,19 +103,49 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
 
   FileItem? _matchSlot(List<FileItem> items, Map<String, String> slot) {
     final key = slot["key"]!;
+    FileItem? best;
     for (final item in items) {
       final name = item.fileName.toLowerCase();
-      if (name.contains(key)) return item;
+      // Only consider files that match the key AND are photos
+      if (item.type == "photo" && name.contains(key)) {
+        if (best == null || item.createdAt.isAfter(best.createdAt)) {
+          best = item;
+        }
+      }
     }
-    return null;
+    return best;
+  }
+
+  Future<void> _cleanOldFiles(int projectId, String slotLabel, String slotKey) async {
+    final appState = AppScope.of(context);
+    final files = await appState.fileRepository.listByProject(projectId);
+    
+    // Find files matching this slot
+    final toDelete = files.where((f) {
+      final name = f.fileName.toLowerCase();
+      return f.type == "photo" && (name.contains(slotKey) || f.category == slotLabel);
+    }).toList();
+
+    for (final item in toDelete) {
+      // Delete physical files
+      if (item.localPath != null) {
+        final f = File(item.localPath!);
+        if (await f.exists()) await f.delete();
+      }
+      if (item.thumbnailPath != null) {
+        final f = File(item.thumbnailPath!);
+        if (await f.exists()) await f.delete();
+      }
+      // Delete from DB
+      await appState.fileRepository.delete(item.id!);
+    }
   }
 
   Future<void> _captureForSlot({
     required Map<String, String> slot,
     required ImageSource source
   }) async {
-    final appState = AppScope.of(context);
-    final project = appState.currentProject;
+    final project = _appState.currentProject;
     if (project == null) return;
     
     setState(() => _loading = true);
@@ -78,278 +156,563 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
       return;
     }
 
-    final projectDir = await _resolveProjectDir(project.id);
-    final ext = p.extension(picked.path).isEmpty ? ".jpg" : p.extension(picked.path);
-    final fileName = "${slot["key"]}$ext";
-    final targetPath = p.join(projectDir, fileName);
-    
-    final file = File(targetPath);
-    if (await file.exists()) await file.delete();
-    await File(picked.path).copy(targetPath);
-    
-    final thumbPath = p.join(projectDir, "thumb_${slot["key"]}.jpg");
-    final thumbFile = File(thumbPath);
-    if (await thumbFile.exists()) await thumbFile.delete();
-    final thumb = await _createThumbnail(targetPath, thumbPath);
+        // 1. Clean old files for this slot locally to ensure uniqueness
 
-    final fileItem = FileItem(
-      projectId: project.id,
-      projectServerId: project.serverId,
-      type: "photo",
-      category: slot["label"],
-      fileName: fileName,
-      localPath: targetPath,
-      thumbnailPath: thumb
-    );
+        await _cleanOldFiles(project.id, slot["label"]!, slot["key"]!);
+
     
-    final localFileId = await appState.fileRepository.save(fileItem);
-    await appState.syncEngine.enqueue(
-      type: "file_upload",
-      payload: {
-        "localFileId": localFileId,
-        "localProjectId": project.id
+
+        final projectDir = await _resolveProjectDir(project.id);
+
+        final ext = p.extension(picked.path).isEmpty ? ".jpg" : p.extension(picked.path);
+
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+        // Keep a recognizable name pattern, but timestamp ensures new file creation
+
+        final fileName = "${slot["key"]}_$timestamp$ext";
+
+        final targetPath = p.join(projectDir, fileName);
+
+        
+
+        final file = File(targetPath);
+
+        if (await file.exists()) await file.delete();
+
+        await File(picked.path).copy(targetPath);
+
+        
+
+        final thumbPath = p.join(projectDir, "thumb_${slot["key"]}_$timestamp.jpg");
+
+        final thumbFile = File(thumbPath);
+
+        if (await thumbFile.exists()) await thumbFile.delete();
+
+        final thumb = await _createThumbnail(targetPath, thumbPath);
+
+    
+
+        final fileItem = FileItem(
+
+          projectId: project.id,
+
+          projectServerId: project.serverId,
+
+          type: "photo",
+
+          category: slot["label"],
+
+          fileName: fileName,
+
+          localPath: targetPath,
+
+          thumbnailPath: thumb
+
+        );
+
+        
+
+        final localFileId = await _appState.fileRepository.save(fileItem);
+
+        await _appState.syncEngine.enqueue(
+
+          type: "file_upload",
+
+          payload: {
+
+            "localFileId": localFileId,
+
+            "localProjectId": project.id
+
+          }
+
+        );
+
+        
+
+        // Instead of immediate sync, schedule it
+
+        _scheduleAutoSync();
+
+        
+
+        setState(() => _loading = false);
+
       }
-    );
+
     
-    if (appState.isOnline) {
-      await appState.syncEngine.syncAll(token: appState.user?.token);
-    }
-    setState(() => _loading = false);
-  }
 
-  Future<void> _deleteFile(FileItem item) async {
-    final appState = AppScope.of(context);
-    if (item.localPath != null) {
-      final f = File(item.localPath!);
-      if (await f.exists()) await f.delete();
-    }
-    if (item.thumbnailPath != null) {
-      final f = File(item.thumbnailPath!);
-      if (await f.exists()) await f.delete();
-    }
-    await appState.fileRepository.delete(item.id!);
-    setState(() {});
-  }
+      Future<void> _deleteFile(FileItem item) async {
 
-  // ---- Bitmask Logic ----
-  bool _isBitSet(String hexMask, int index) {
-    if (hexMask.isEmpty) return false;
-    try {
-      // Dart BigInt handles hex strings
-      final mask = BigInt.parse(hexMask, radix: 16);
-      final bit = BigInt.one << index;
-      return (mask & bit) != BigInt.zero;
-    } catch (_) {
-      return false;
-    }
-  }
+        if (item.localPath != null) {
 
-  String _toggleBit(String hexMask, int index, bool value) {
-    try {
-      var mask = BigInt.tryParse(hexMask, radix: 16) ?? BigInt.zero;
-      final bit = BigInt.one << index;
-      if (value) {
-        mask = mask | bit;
-      } else {
-        mask = mask & ~bit;
+          final f = File(item.localPath!);
+
+          if (await f.exists()) await f.delete();
+
+        }
+
+        if (item.thumbnailPath != null) {
+
+          final f = File(item.thumbnailPath!);
+
+          if (await f.exists()) await f.delete();
+
+        }
+
+        await _appState.fileRepository.delete(item.id!);
+
+        
+
+        setState(() {});
+
       }
-      // Return 32-char hex string (128 bits / 4)
-      // padLeft might need to be adjusted if BigInt.toRadixString doesn't output leading zeros
-      return mask.toRadixString(16).padLeft(32, '0');
-    } catch (_) {
-      return hexMask;
-    }
-  }
 
-  Future<void> _onChecklistToggle(int index, bool value) async {
-    final appState = AppScope.of(context);
-    final project = appState.currentProject;
-    if (project == null) return;
+    
 
-    final newMask = _toggleBit(project.checklistMask, index, value);
-    project.checklistMask = newMask;
-    project.syncStatus = SyncStatus.pending; // Mark as pending sync
-    
-    // Save to Local DB (Now actually saves to disk thanks to build_runner)
-    await appState.projectRepository.save(project);
-    
-    // Enqueue Sync (Send only the mask)
-    await appState.syncEngine.enqueue(
-      type: "project_update",
-      payload: {
-        "localProjectId": project.id,
-        "checklistMask": newMask
+      // ---- Bitmask Logic ----
+
+      bool _isBitSet(String hexMask, int index) {
+
+        if (hexMask.isEmpty) return false;
+
+        try {
+
+          // Dart BigInt handles hex strings
+
+          final mask = BigInt.parse(hexMask, radix: 16);
+
+          final bit = BigInt.one << index;
+
+          return (mask & bit) != BigInt.zero;
+
+        } catch (_) {
+
+          return false;
+
+        }
+
       }
-    );
 
-    if (appState.isOnline) {
-      await appState.syncEngine.syncAll(token: appState.user?.token);
-    }
     
-    // Crucial: Update the state so the entire UI reflects the new mask
-    appState.notifyListeners();
-    setState(() {});
-  }
-  // -----------------------
 
-  Future<void> _deleteProject() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Projeyi Sil?"),
-        content: const Text("Bu proje ve bagli tum dosyalar cihazdan silinecek. Sunucuda ise 'Silindi' olarak isaretlenecek. Emin misiniz?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Iptal")),
-          TextButton(onPressed: () => Navigator.pop(context, true), style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text("SIL")),
-        ],
-      )
-    );
+      String _toggleBit(String hexMask, int index, bool value) {
 
-    if (confirmed != true) return;
+        try {
 
-    final appState = AppScope.of(context);
-    final project = appState.currentProject;
-    if (project == null) return;
+          var mask = BigInt.tryParse(hexMask, radix: 16) ?? BigInt.zero;
 
-    setState(() => _loading = true);
+          final bit = BigInt.one << index;
 
-    // 1. Delete Local Files
-    final projectDir = await _resolveProjectDir(project.id);
-    final dir = Directory(projectDir);
-    if (await dir.exists()) {
-      await dir.delete(recursive: true);
-    }
+          if (value) {
 
-    // 2. Mark as Deleted in DB & Enqueue Sync
-    await appState.projectRepository.markAsDeleted(project.id);
-    await appState.syncEngine.enqueue(
-      type: "project_delete",
-      payload: {"localProjectId": project.id}
-    );
+            mask = mask | bit;
 
-    if (appState.isOnline) {
-      await appState.syncEngine.syncAll(token: appState.user?.token);
-    }
+          } else {
 
-    // Clear current project from state so dashboard updates
-    appState.setCurrentProject(null);
+            mask = mask & ~bit;
 
-    if (mounted) {
-      Navigator.pop(context); // Close detail screen
-      appState.notifyListeners();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Proje silindi.")));
-    }
-  }
+          }
 
-  @override
-  Widget build(BuildContext context) {
-    final appState = AppScope.of(context);
-    final project = appState.currentProject;
-    final isAdmin = appState.user?.role == "admin"; // Check role
+          return mask.toRadixString(16).padLeft(32, '0');
+
+        } catch (_) {
+
+          return hexMask;
+
+        }
+
+      }
+
     
-    if (project == null) {
-      return const Scaffold(body: Center(child: Text("Proje secilmedi")));
-    }
 
-    return Scaffold(
-      backgroundColor: AppTheme.bg,
-      appBar: AppBar(
-        title: Text(project.project),
-        backgroundColor: Colors.transparent,
-        actions: [
-          if (isAdmin)
-            IconButton(
-              icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
-              onPressed: _loading ? null : _deleteProject,
-              tooltip: "Projeyi Sil",
-            )
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header Card with Status
-            _buildProjectHeader(project),
-            
-            const SizedBox(height: 24),
+      Future<void> _onChecklistToggle(int index, bool value) async {
 
-            // Photo Grid Section
-            const Text(
-              "Standart Fotograflar",
-              style: TextStyle(color: AppTheme.paper, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            FutureBuilder<List<FileItem>>(
-              future: appState.fileRepository.listByProject(project.id),
-              builder: (context, snapshot) {
-                final files = snapshot.data ?? [];
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3, 
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.2,
-                  ),
-                  itemCount: _photoSlots.length,
-                  itemBuilder: (context, index) {
-                    final slot = _photoSlots[index];
-                    final match = _matchSlot(files, slot);
-                    return _buildPhotoCard(slot, match);
-                  },
-                );
-              },
-            ),
+        final project = _appState.currentProject;
 
-            const SizedBox(height: 24),
+        if (project == null) return;
 
-            // Bitmask Checklist
-            const Text(
-              "QC Kontrol Listesi",
-              style: TextStyle(color: AppTheme.paper, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            _buildChecklist(project),
+    
 
-            const SizedBox(height: 24),
+        final newMask = _toggleBit(project.checklistMask, index, value);
 
-            // Document List
-            const Text(
-              "Dökümanlar",
-              style: TextStyle(color: AppTheme.paper, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            FutureBuilder<List<FileItem>>(
-              future: appState.fileRepository.listByProject(project.id),
-              builder: (context, snapshot) {
-                final items = snapshot.data ?? [];
-                final docs = items.where((i) => i.type != "photo").toList();
-                if (docs.isEmpty) return Text("Kayitli döküman bulunmadi.", style: TextStyle(color: AppTheme.paper.withOpacity(0.4)));
-                return Column(
-                  children: docs.map((doc) => Card(
-                    color: AppTheme.bgAccent,
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: const Icon(Icons.description, color: AppTheme.paper),
-                      title: Text(doc.fileName, style: const TextStyle(color: AppTheme.paper)),
-                      subtitle: Text(doc.syncStatus.name, style: TextStyle(color: AppTheme.accent.withOpacity(0.7))),
+        project.checklistMask = newMask;
+
+        project.syncStatus = SyncStatus.pending; 
+
+        
+
+        await _appState.projectRepository.save(project);
+
+        
+
+        await _appState.syncEngine.enqueue(
+
+          type: "project_update",
+
+          payload: {
+
+            "localProjectId": project.id,
+
+            "checklistMask": newMask
+
+          }
+
+        );
+
+    
+
+        // Debounced sync instead of immediate
+
+        _scheduleAutoSync();
+
+        
+
+        _appState.notifyListeners();
+
+        setState(() {});
+
+      }
+
+      // -----------------------
+
+    
+
+      Future<void> _deleteProject() async {
+
+        final confirmed = await showDialog<bool>(
+
+          context: context,
+
+          builder: (context) => AlertDialog(
+
+            title: const Text("Projeyi Sil?"),
+
+            content: const Text("Bu proje ve bagli tum dosyalar cihazdan silinecek. Sunucuda ise 'Silindi' olarak isaretlenecek. Emin misiniz?"),
+
+            actions: [
+
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Iptal")),
+
+              TextButton(onPressed: () => Navigator.pop(context, true), style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text("SIL")),
+
+            ],
+
+          )
+
+        );
+
+    
+
+        if (confirmed != true) return;
+
+    
+
+        final project = _appState.currentProject;
+
+        if (project == null) return;
+
+    
+
+        setState(() => _loading = true);
+
+    
+
+        // 1. Delete Local Files
+
+        final projectDir = await _resolveProjectDir(project.id);
+
+        final dir = Directory(projectDir);
+
+        if (await dir.exists()) {
+
+          await dir.delete(recursive: true);
+
+        }
+
+    
+
+        // 2. Mark as Deleted in DB & Enqueue Sync
+
+        await _appState.projectRepository.markAsDeleted(project.id);
+
+        await _appState.syncEngine.enqueue(
+
+          type: "project_delete",
+
+          payload: {"localProjectId": project.id}
+
+        );
+
+    
+
+        await _forceSync(); // Immediate sync for deletion is better UX
+
+    
+
+        _appState.setCurrentProject(null);
+
+    
+
+        if (mounted) {
+
+          Navigator.pop(context); 
+
+          _appState.notifyListeners();
+
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Proje silindi.")));
+
+        }
+
+      }
+
+    
+
+      @override
+
+      Widget build(BuildContext context) {
+
+        final project = _appState.currentProject;
+
+        final isAdmin = _appState.user?.role == "admin"; 
+
+        
+
+        if (project == null) {
+
+          return const Scaffold(body: Center(child: Text("Proje secilmedi")));
+
+        }
+
+    
+
+        return PopScope(
+
+          onPopInvoked: (didPop) async {
+
+             // Ensure sync happens on back button press (Android system back)
+
+             await _forceSync();
+
+          },
+
+          child: Scaffold(
+
+            backgroundColor: AppTheme.bg,
+
+            appBar: AppBar(
+
+              title: Text(project.project),
+
+              backgroundColor: Colors.transparent,
+
+              actions: [
+
+                if (_loading)
+
+                  const Padding(
+
+                    padding: EdgeInsets.only(right: 16.0),
+
+                    child: SizedBox(
+
+                      width: 20, 
+
+                      height: 20, 
+
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent)
+
                     ),
-                  )).toList(),
-                );
-              },
+
+                  ),
+
+                if (isAdmin)
+
+                  IconButton(
+
+                    icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
+
+                    onPressed: _loading ? null : _deleteProject,
+
+                    tooltip: "Projeyi Sil",
+
+                  ),
+
+              IconButton(
+
+                icon: const Icon(Icons.bug_report, color: Colors.yellow),
+
+                onPressed: () async {
+
+                   final files = await _appState.fileRepository.listByProject(project.id);
+
+                   print("--- DEBUG FILES START ---");
+
+                   for(var f in files) {
+
+                     print("ID: ${f.id} | Name: ${f.fileName} | Type: ${f.type} | Cat: ${f.category} | Created: ${f.createdAt}");
+
+                   }
+
+                   print("--- DEBUG FILES END ---");
+
+                },
+
+              )
+
+            ],
+
+          ),
+
+          body: SingleChildScrollView(
+
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+
+            child: Column(
+
+              crossAxisAlignment: CrossAxisAlignment.start,
+
+              children: [
+
+                _buildProjectHeader(project),
+
+                const SizedBox(height: 24),
+
+                const Text(
+
+                  "Standart Fotograflar",
+
+                  style: TextStyle(color: AppTheme.paper, fontSize: 16, fontWeight: FontWeight.bold),
+
+                ),
+
+                const SizedBox(height: 12),
+
+                FutureBuilder<List<FileItem>>(
+
+                  future: _appState.fileRepository.listByProject(project.id),
+
+                  builder: (context, snapshot) {
+
+                    final files = snapshot.data ?? [];
+
+                    return GridView.builder(
+
+                      shrinkWrap: true,
+
+                      physics: const NeverScrollableScrollPhysics(),
+
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+
+                        crossAxisCount: 3, 
+
+                        crossAxisSpacing: 12,
+
+                        mainAxisSpacing: 12,
+
+                        childAspectRatio: 1.2,
+
+                      ),
+
+                      itemCount: _photoSlots.length,
+
+                      itemBuilder: (context, index) {
+
+                        final slot = _photoSlots[index];
+
+                        final match = _matchSlot(files, slot);
+
+                        return _buildPhotoCard(slot, match);
+
+                      },
+
+                    );
+
+                  },
+
+                ),
+
+                const SizedBox(height: 24),
+
+                const Text(
+
+                  "QC Kontrol Listesi",
+
+                  style: TextStyle(color: AppTheme.paper, fontSize: 16, fontWeight: FontWeight.bold),
+
+                ),
+
+                const SizedBox(height: 12),
+
+                _buildChecklist(project),
+
+                const SizedBox(height: 24),
+
+                const Text(
+
+                  "Dökümanlar",
+
+                  style: TextStyle(color: AppTheme.paper, fontSize: 16, fontWeight: FontWeight.bold),
+
+                ),
+
+                const SizedBox(height: 12),
+
+                FutureBuilder<List<FileItem>>(
+
+                  future: _appState.fileRepository.listByProject(project.id),
+
+                  builder: (context, snapshot) {
+
+                    final items = snapshot.data ?? [];
+
+                    final docs = items.where((i) => i.type != "photo").toList();
+
+                    if (docs.isEmpty) return Text("Kayitli döküman bulunmadi.", style: TextStyle(color: AppTheme.paper.withOpacity(0.4)));
+
+                    return Column(
+
+                      children: docs.map((doc) => Card(
+
+                        color: AppTheme.bgAccent,
+
+                        margin: const EdgeInsets.only(bottom: 8),
+
+                        child: ListTile(
+
+                          leading: const Icon(Icons.description, color: AppTheme.paper),
+
+                          title: Text(doc.fileName, style: const TextStyle(color: AppTheme.paper)),
+
+                          subtitle: Text(doc.syncStatus.name, style: TextStyle(color: AppTheme.accent.withOpacity(0.7))),
+
+                        ),
+
+                      )).toList(),
+
+                    );
+
+                  },
+
+                ),
+
+                const SizedBox(height: 80),
+
+              ],
+
             ),
-            const SizedBox(height: 80),
-          ],
+
+          ),
+
         ),
-      ),
-    );
-  }
+
+        );
+
+      }
 
   Widget _buildChecklist(dynamic project) {
-    // Group definitions by category
     final groups = <String, List<ChecklistDefinition>>{};
     for (var def in ChecklistDefinitions.items) {
       if (!groups.containsKey(def.category)) {
@@ -361,7 +724,6 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
     return Column(
       children: groups.keys.map((cat) {
         final items = groups[cat]!;
-        // Calculate completion based on current mask
         int doneCount = 0;
         for (var item in items) {
           if (_isBitSet(project.checklistMask, item.index)) doneCount++;
@@ -375,7 +737,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: ExpansionTile(
-                key: PageStorageKey("cat_$cat"), // Keep open/close state
+                key: PageStorageKey("cat_$cat"), 
                 backgroundColor: AppTheme.bgAccent,
                 collapsedBackgroundColor: AppTheme.bgAccent,
                 leading: Icon(
